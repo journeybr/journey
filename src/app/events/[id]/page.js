@@ -921,28 +921,43 @@ export default function EventDetail({ params }) {
                 </div>
               )}
 
+              {activeFichaContact.phone && (
+                <div>
+                  <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e' }}>Telefone:</strong>
+                  <span style={{ marginLeft: '0.5rem' }}>{activeFichaContact.phone}</span>
+                </div>
+              )}
+
               <div>
                 <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e' }}>Remédios Informados:</strong>
-                {activeFichaContact.medications_list && activeFichaContact.medications_list.length > 0 ? (
+                {activeFichaContact.remedio === 'não informado' ? (
+                  <div style={{ marginTop: '0.4rem', padding: '0.6rem 0.8rem', background: '#fff9e6', border: '1px solid #ffeeba', borderRadius: '6px', color: '#856404', fontSize: '0.88rem', fontStyle: 'italic' }}>
+                    ⚠️ Ficha médica ainda NÃO foi preenchida por este viajante.
+                  </div>
+                ) : activeFichaContact.medications_list && activeFichaContact.medications_list.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginTop: '0.5rem', paddingLeft: '0.5rem' }}>
                     {activeFichaContact.medications_list.map((med, idx) => (
                       <div key={idx} style={{ padding: '0.5rem 0.8rem', background: 'rgba(45, 74, 62, 0.05)', borderRadius: '6px', borderLeft: '3px solid #2d4a3e' }}>
                         <div style={{ fontWeight: 'bold' }}>{med.name}</div>
-                        {med.frequency && <div style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic', marginTop: '0.2rem' }}>Frequência: {med.frequency}</div>}
+                        {(med.dosage || med.frequency) && (
+                          <div style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic', marginTop: '0.2rem' }}>
+                            Dosagem/Frequência: {med.dosage || ''}{med.dosage && med.frequency ? ' - ' : ''}{med.frequency || ''}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div style={{ marginTop: '0.3rem', fontStyle: 'italic', color: '#888' }}>
-                    Nenhum remédio de uso contínuo informado (declarou não tomar remédios).
+                  <div style={{ marginTop: '0.4rem', padding: '0.6rem 0.8rem', background: 'rgba(45, 74, 62, 0.04)', borderRadius: '6px', borderLeft: '3px solid #2d4a3e', fontStyle: 'italic', color: '#5a605c', fontSize: '0.88rem' }}>
+                    Nenhum remédio de uso contínuo informado (declarou não tomar remédios de uso contínuo).
                   </div>
                 )}
               </div>
 
               {activeFichaContact.observations && (
                 <div>
-                  <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e' }}>Observações:</strong>
-                  <p style={{ margin: '0.3rem 0 0 0', fontStyle: 'italic', color: '#555', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>
+                  <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e' }}>Observações / Terapias Alternativas:</strong>
+                  <p style={{ margin: '0.3rem 0 0 0', fontStyle: 'italic', color: '#555', whiteSpace: 'pre-wrap', lineHeight: '1.5', padding: '0.6rem 0.8rem', background: '#faf9f6', border: '1px dashed #d4cbb8', borderRadius: '6px' }}>
                     {activeFichaContact.observations}
                   </p>
                 </div>

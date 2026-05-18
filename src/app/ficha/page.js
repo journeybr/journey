@@ -102,6 +102,7 @@ export default function PublicFicha() {
   }, []);
 
   const [medications, setMedications] = useState([]);
+  const [noMedications, setNoMedications] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -171,6 +172,7 @@ export default function PublicFicha() {
       frequency: currentFreq.trim() || 'Não informada'
     };
     setMedications([...medications, newMed]);
+    setNoMedications(false); // Desmarca automaticamente o "Não tomo nenhum remédio"
     setCurrentMed('');
     setCurrentDosage('');
     setCurrentFreq('');
@@ -202,6 +204,19 @@ export default function PublicFicha() {
     if (!declarationChecked) {
       alert('Você precisa declarar a veracidade das informações fornecidas marcando o campo de declaração.');
       return;
+    }
+
+    // Validação inteligente de medicamentos
+    if (medications.length === 0 && !noMedications) {
+      const confirmNoMed = window.confirm(
+        "Você não adicionou nenhum remédio e não marcou a opção 'Não tomo nenhum remédio'.\n\nVocê confirma que não utiliza nenhum medicamento de uso contínuo?"
+      );
+      if (confirmNoMed) {
+        setNoMedications(true);
+      } else {
+        alert("Por favor, adicione seus medicamentos na lista ou marque a opção 'Não tomo nenhum remédio' antes de enviar.");
+        return;
+      }
     }
 
     setLoading(true);
@@ -544,6 +559,42 @@ export default function PublicFicha() {
                 <p style={{ fontSize: '0.85rem', color: '#5a605c', marginTop: '-0.5rem', lineHeight: '1.4' }}>
                   Adicione abaixo todos os medicamentos que você toma regularmente. Se você não utiliza nenhuma medicação de uso contínuo, pode deixar esta seção vazia e seguir para o próximo campo.
                 </p>
+
+                {/* Checkbox: Não tomo nenhum remédio */}
+                <label style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.8rem',
+                  padding: '1rem',
+                  background: noMedications ? 'rgba(45, 74, 62, 0.05)' : '#faf9f6',
+                  border: noMedications ? '1px solid #2d4a3e' : '1px solid #d4cbb8',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  fontSize: '0.95rem',
+                  color: '#2d4a3e',
+                  fontWeight: '600',
+                  userSelect: 'none'
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={noMedications}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setNoMedications(checked);
+                      if (checked) {
+                        setMedications([]);
+                      }
+                    }}
+                    style={{
+                      width: '18px',
+                      height: '18px',
+                      accentColor: '#2d4a3e',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  Não tomo nenhum remédio de uso contínuo
+                </label>
 
                 {/* Sub-formulário de Medicamento */}
                 <div style={{
