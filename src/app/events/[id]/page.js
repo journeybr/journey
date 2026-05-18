@@ -432,10 +432,120 @@ export default function EventDetail({ params }) {
   const intencao = participants.filter(p => p.status === 'intenção de ir');
   const iniciais = participants.filter(p => p.status === 'avisado' || p.status === 'desistiu' || p.status === 'avisar');
 
-  const renderParticipantRow = (p) => {
+  const renderParticipantRow = (p, isSimplified = false) => {
     const hasRemedioAccess = p.status === 'intenção de ir' || p.status === 'Confirmado';
     const isSemNada = p.status === 'avisado' || p.status === 'desistiu' || p.status === 'avisar';
     const cellOpacity = isSemNada ? 0.08 : 1;
+    const rowOpacity = p.status === 'desistiu' ? 0.4 : 1;
+
+    if (isSimplified) {
+      return (
+        <Fragment key={p.contact_id}>
+          {/* 1. Viajante (Nome & Telefone) */}
+          <div style={{ borderBottom: '1px solid #e5dfd3', padding: '1.2rem 0.5rem', opacity: rowOpacity, transition: 'opacity 0.2s' }}>
+            <div style={{ fontSize: '1.05rem', color: '#1a1a1a', fontWeight: '500' }}>{p.contacts?.name}</div>
+            <div style={{ fontSize: '0.75rem', color: '#888', letterSpacing: '0.5px', fontFamily: 'sans-serif', marginTop: '0.2rem' }}>{p.contacts?.phone || 'Sem telefone'}</div>
+          </div>
+
+          {/* 2. Status da Cerimônia Simplificado */}
+          <div style={{ borderBottom: '1px solid #e5dfd3', padding: '1.2rem 0.5rem', opacity: rowOpacity, transition: 'opacity 0.2s', display: 'flex', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 28px)', gap: '4px', justifyItems: 'center', alignItems: 'center' }}>
+              {[
+                { value: 'avisado', label: 'Avisado', icon: '📲' },
+                { value: 'intenção de ir', label: 'Intenção de ir', icon: '👣' },
+                { value: 'Confirmado', label: 'Confirmado', icon: '✅' },
+                { value: 'desistiu', label: 'Desistiu', icon: '❌' }
+              ].map((step, idx) => {
+                const isDesistiuActive = p.status === 'desistiu';
+                
+                let isLit = false;
+                if (step.value === 'desistiu') {
+                  isLit = isDesistiuActive;
+                } else {
+                  if (isDesistiuActive) {
+                    isLit = false;
+                  } else {
+                    const normalizedStatus = p.status === 'avisar' ? 'avisado' : (p.status || 'Confirmado');
+                    const currentPipelineIndex = ['avisado', 'intenção de ir', 'Confirmado'].indexOf(normalizedStatus);
+                    isLit = idx <= currentPipelineIndex;
+                  }
+                }
+
+                const opacity = isLit ? 1 : 0.08;
+                const scale = 'scale(1)';
+                const filter = isLit ? 'none' : 'grayscale(100%)';
+                
+                const isActiveStatus = p.status === step.value;
+                const background = isActiveStatus 
+                  ? (step.value === 'desistiu' ? 'rgba(231, 76, 60, 0.12)' : 'rgba(45, 74, 62, 0.08)')
+                  : 'transparent';
+                const border = isActiveStatus
+                  ? (step.value === 'desistiu' ? '1px solid rgba(231, 76, 60, 0.4)' : '1px solid rgba(45, 74, 62, 0.3)')
+                  : '1px solid transparent';
+
+                return (
+                  <button
+                    key={step.value}
+                    onClick={() => {
+                      if (p.status === step.value) {
+                        if (step.value === 'Confirmado') {
+                          updateParticipantStatus(p.contact_id, 'intenção de ir');
+                        } else if (step.value === 'intenção de ir') {
+                          updateParticipantStatus(p.contact_id, 'avisado');
+                        } else if (step.value === 'desistiu') {
+                          updateParticipantStatus(p.contact_id, 'Confirmado');
+                        }
+                      } else {
+                        updateParticipantStatus(p.contact_id, step.value);
+                      }
+                    }}
+                    style={{
+                      background,
+                      border,
+                      borderRadius: '50%',
+                      width: '26px',
+                      height: '26px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                      opacity,
+                      transform: scale,
+                      filter,
+                      fontSize: '0.95rem',
+                      padding: 0,
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                    title={step.label}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'scale(1.3)';
+                      e.currentTarget.style.opacity = '1';
+                      e.currentTarget.style.filter = 'none';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = scale;
+                      e.currentTarget.style.opacity = opacity;
+                      e.currentTarget.style.filter = filter;
+                    }}
+                  >
+                    {step.icon}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3. Ações Simplificadas (Remover) */}
+          <div style={{ borderBottom: '1px solid #e5dfd3', padding: '1.2rem 0.5rem', opacity: rowOpacity, transition: 'opacity 0.2s', textAlign: 'right' }}>
+            <button onClick={() => removeParticipant(p.contact_id)} style={{ border: 'none', background: 'transparent', color: '#c00', fontSize: '1.4rem', cursor: 'pointer', opacity: 0.5, transition: 'opacity 0.2s' }} onMouseEnter={(e) => e.target.style.opacity = 1} onMouseLeave={(e) => e.target.style.opacity = 0.5} title="Remover da lista">
+              ×
+            </button>
+          </div>
+        </Fragment>
+      );
+    }
     
     // Resolução dinâmica do status do remédio com base no preenchimento real da Ficha
     let effectiveRemedioStatus = p.remedio_status || 'enviar';
@@ -498,8 +608,6 @@ export default function EventDetail({ params }) {
         };
       }
     }
-
-    const rowOpacity = p.status === 'desistiu' ? 0.4 : 1;
 
     return (
       <Fragment key={p.contact_id}>
@@ -976,96 +1084,100 @@ export default function EventDetail({ params }) {
               <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={openImportModal}>Adicionar Viajantes</button>
             </div>
           ) : (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '2fr 0.8fr 1.5fr 1fr 0.9fr 1.6fr 0.4fr',
-              alignItems: 'center',
-              width: '100%',
-              columnGap: '1rem'
-            }}>
-              {/* Header Titles */}
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Viajante</div>
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Dias</div>
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Status</div>
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Remédio</div>
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Pago</div>
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Vaga</div>
-              <div style={{ padding: '0 0 1rem 0', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.8rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e', textAlign: 'right' }}>Ações</div>
-
-              {/* Seção 1: Confirmados (Topo) */}
-              {confirmados.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3rem' }}>
+              
+              {/* GRUPO 1: VIAJANTES ATIVOS (CONFIRMADOS & INTENÇÃO DE IR) */}
+              <div>
                 <div style={{ 
-                  gridColumn: '1 / span 7', 
-                  padding: '0.6rem 0.8rem', 
-                  background: 'rgba(45, 74, 62, 0.04)', 
+                  padding: '0.8rem 1.2rem', 
+                  background: 'rgba(45, 74, 62, 0.06)', 
                   borderLeft: '4px solid #2d4a3e',
-                  marginTop: '1.5rem',
-                  marginBottom: '0.5rem',
-                  fontWeight: 'bold',
-                  fontSize: '0.8rem',
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
+                  borderRadius: '0 8px 8px 0',
+                  marginBottom: '1.5rem',
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontFamily: 'sans-serif',
-                  color: '#2d4a3e'
+                  alignItems: 'center'
                 }}>
-                  <span>🌟 Viajantes Confirmados</span>
-                  <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>{confirmados.length} viajante(s)</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '0.95rem', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>
+                    🌟 Viajantes Ativos ({confirmados.length + intencao.length})
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#555', fontStyle: 'italic' }}>Fichas Médicas e Financeiro Liberados</span>
                 </div>
-              )}
-              {confirmados.map(p => renderParticipantRow(p))}
 
-              {/* Seção 2: Intenção de Ir (Meio) */}
-              {intencao.length > 0 && (
-                <div style={{ 
-                  gridColumn: '1 / span 7', 
-                  padding: '0.6rem 0.8rem', 
-                  background: 'rgba(241, 196, 15, 0.04)', 
-                  borderLeft: '4px solid #b7950b',
-                  marginTop: '1.5rem',
-                  marginBottom: '0.5rem',
-                  fontWeight: 'bold',
-                  fontSize: '0.8rem',
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontFamily: 'sans-serif',
-                  color: '#b7950b'
-                }}>
-                  <span>👣 Intenção de Ir (Fichas Liberadas)</span>
-                  <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>{intencao.length} viajante(s)</span>
-                </div>
-              )}
-              {intencao.map(p => renderParticipantRow(p))}
+                {(confirmados.length + intencao.length) === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', background: '#faf9f6', border: '1px dashed #d4cbb8', borderRadius: '8px', color: '#888', fontStyle: 'italic' }}>
+                    Nenhum participante confirmado ou com intenção no momento.
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '2fr 0.8fr 1.5fr 1.2fr 0.9fr 1.6fr 0.4fr',
+                    alignItems: 'center',
+                    width: '100%',
+                    columnGap: '1rem'
+                  }}>
+                    {/* Headers */}
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Viajante</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Dias</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Status</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Remédio</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Pago</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e' }}>Vaga</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #2d4a3e', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#2d4a3e', textAlign: 'right' }}>Ações</div>
 
-              {/* Seção 3: Sem nada / Iniciais / Desistiram (Base) */}
-              {iniciais.length > 0 && (
+                    {/* Content */}
+                    {[...confirmados, ...intencao]
+                      .sort((a, b) => (a.contacts?.name || '').localeCompare(b.contacts?.name || ''))
+                      .map(p => renderParticipantRow(p, false))
+                    }
+                  </div>
+                )}
+              </div>
+
+              {/* GRUPO 2: CONTATOS INICIAIS & DESISTENTES */}
+              <div>
                 <div style={{ 
-                  gridColumn: '1 / span 7', 
-                  padding: '0.6rem 0.8rem', 
-                  background: 'rgba(127, 140, 141, 0.04)', 
+                  padding: '0.8rem 1.2rem', 
+                  background: 'rgba(127, 140, 141, 0.08)', 
                   borderLeft: '4px solid #7f8c8d',
-                  marginTop: '1.5rem',
-                  marginBottom: '0.5rem',
-                  fontWeight: 'bold',
-                  fontSize: '0.8rem',
-                  letterSpacing: '1px',
-                  textTransform: 'uppercase',
+                  borderRadius: '0 8px 8px 0',
+                  marginBottom: '1.5rem',
                   display: 'flex',
                   justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontFamily: 'sans-serif',
-                  color: '#7f8c8d'
+                  alignItems: 'center'
                 }}>
-                  <span>📲 Sem Nada / Contatos Iniciais</span>
-                  <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>{iniciais.length} viajante(s)</span>
+                  <span style={{ fontWeight: 'bold', fontSize: '0.95rem', letterSpacing: '1px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#7f8c8d' }}>
+                    📲 Contatos Iniciais & Desistentes ({iniciais.length})
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: '#666', fontStyle: 'italic' }}>Apenas Prospecção e Convite</span>
                 </div>
-              )}
-              {iniciais.map(p => renderParticipantRow(p))}
+
+                {iniciais.length === 0 ? (
+                  <div style={{ padding: '2rem', textAlign: 'center', background: '#faf9f6', border: '1px dashed #d4cbb8', borderRadius: '8px', color: '#888', fontStyle: 'italic' }}>
+                    Nenhum contato inicial ou desistente nesta cerimônia.
+                  </div>
+                ) : (
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '3fr 1.5fr 0.5fr',
+                    alignItems: 'center',
+                    width: '100%',
+                    columnGap: '1rem'
+                  }}>
+                    {/* Headers */}
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #7f8c8d', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#7f8c8d' }}>Viajante</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #7f8c8d', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#7f8c8d' }}>Status Cerimônia</div>
+                    <div style={{ padding: '0 0.5rem 1rem 0.5rem', borderBottom: '2px solid #7f8c8d', fontWeight: 'bold', fontSize: '0.78rem', letterSpacing: '1.5px', textTransform: 'uppercase', fontFamily: 'sans-serif', color: '#7f8c8d', textAlign: 'right' }}>Ações</div>
+
+                    {/* Content */}
+                    {[...iniciais]
+                      .sort((a, b) => (a.contacts?.name || '').localeCompare(b.contacts?.name || ''))
+                      .map(p => renderParticipantRow(p, true))
+                    }
+                  </div>
+                )}
+              </div>
+
             </div>
           )}
         </div>
