@@ -17,6 +17,233 @@ export default function EventDetail({ params }) {
   const [activeFichaContact, setActiveFichaContact] = useState(null);
   const router = useRouter();
 
+  const exportFichaPDF = (contact) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Por favor, permita pop-ups para exportar o PDF.');
+      return;
+    }
+
+    let medsHTML = '';
+    if (contact.medications_list && contact.medications_list.length > 0) {
+      contact.medications_list.forEach(med => {
+        medsHTML += `
+          <div class="med-card">
+            <div class="med-name">💊 ${med.name}</div>
+            ${(med.dosage || med.frequency) ? `
+              <div class="med-desc">
+                Dosagem: ${med.dosage || 'Não informada'} | Frequência: ${med.frequency || 'Não informada'}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+    } else {
+      medsHTML = `<p class="no-info">Nenhum remédio de uso contínuo informado (declarou não tomar remédios).</p>`;
+    }
+
+    let obsHTML = '';
+    if (contact.observations) {
+      const cleanObs = contact.observations
+        .replace(/\[Ficha Médica preenchida online[^\]]*\]\s*/g, '')
+        .replace(/Declaração: Aceita e declarada como verdadeira em [^\n]*/g, '');
+      obsHTML = `<div class="observations">${cleanObs.trim() || 'Nenhuma observação declarada.'}</div>`;
+    } else {
+      obsHTML = `<p class="no-info">Nenhuma observação ou terapia alternativa declarada.</p>`;
+    }
+
+    let dateString = new Date().toLocaleDateString('pt-BR');
+    if (contact.observations) {
+      const match = contact.observations.match(/em (\d{2}\/\d{2}\/\d{4})/i);
+      if (match && match[1]) {
+        dateString = match[1];
+      }
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Ficha Médica - ${contact.name}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@400;600&display=swap');
+          body {
+            font-family: 'Lora', Georgia, serif;
+            color: #2b2b2b;
+            line-height: 1.6;
+            padding: 3rem;
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 2px double #8b7e66;
+            padding-bottom: 1.5rem;
+            margin-bottom: 2.5rem;
+          }
+          .header h1 {
+            font-family: 'Cinzel', serif;
+            font-size: 1.8rem;
+            color: #2d4a3e;
+            margin: 0;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+          }
+          .header p {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.8rem;
+            color: #666;
+            margin: 0.5rem 0 0 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+          .section-title {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #2d4a3e;
+            border-bottom: 1px solid #d4cbb8;
+            padding-bottom: 0.4rem;
+            margin-top: 2rem;
+            margin-bottom: 1.5rem;
+          }
+          .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+          }
+          .info-item strong {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #555;
+            display: block;
+            margin-bottom: 0.2rem;
+          }
+          .med-card {
+            padding: 0.8rem 1.2rem;
+            background: #faf9f6;
+            border-left: 3px solid #2d4a3e;
+            border-bottom: 1px solid #e8e2d5;
+            border-right: 1px solid #e8e2d5;
+            border-top: 1px solid #e8e2d5;
+            border-radius: 6px;
+            margin-bottom: 0.8rem;
+          }
+          .med-name {
+            font-weight: bold;
+            color: #1a1a1a;
+          }
+          .med-desc {
+            font-size: 0.8rem;
+            color: #555;
+            font-style: italic;
+            margin-top: 0.2rem;
+          }
+          .observations {
+            font-style: italic;
+            color: #444;
+            white-space: pre-wrap;
+            background: #faf9f6;
+            padding: 1rem 1.5rem;
+            border: 1px dashed #d4cbb8;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+          }
+          .no-info {
+            color: #888;
+            font-style: italic;
+            font-size: 0.9rem;
+          }
+          .signature-area {
+            margin-top: 5rem;
+            text-align: center;
+            border-top: 1px solid #d4cbb8;
+            padding-top: 1.8rem;
+            page-break-inside: avoid;
+          }
+          .signature-text {
+            font-family: 'Lora', serif;
+            font-size: 1.15rem;
+            font-style: italic;
+            color: #1a1a1a;
+            margin-bottom: 0.4rem;
+          }
+          .signature-date {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #666;
+          }
+          @media print {
+            body {
+              padding: 1cm;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Relatório de Ficha Médica</h1>
+          <p>Journey Brasil • Confidencial & Formal</p>
+        </div>
+
+        <div class="section-title">Dados de Identificação</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <strong>Nome do Viajante</strong>
+            ${contact.name}
+          </div>
+          <div class="info-item">
+            <strong>CPF</strong>
+            ${contact.cpf ? contact.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : 'Não informado'}
+          </div>
+          <div class="info-item">
+            <strong>Telefone</strong>
+            ${contact.phone || 'Não informado'}
+          </div>
+          <div class="info-item">
+            <strong>Status de Remédios</strong>
+            ${contact.remedio === 'não' ? '✅ DECLARADO SEM USO DE REMÉDIOS' : '⏳ CONCORRE A AVALIAÇÃO DE MEDICAMENTOS'}
+          </div>
+        </div>
+
+        <div class="section-title">1. Medicamentos e Remédios de Uso Contínuo</div>
+        <div>
+          ${medsHTML}
+        </div>
+
+        <div class="section-title">2. Observações e Terapias Alternativas</div>
+        <div>
+          ${obsHTML}
+        </div>
+
+        <div class="signature-area">
+          <div class="signature-text">Assinado eletronicamente por ${contact.name}</div>
+          <div class="signature-date">Declaração de veracidade validada em ${dateString}</div>
+        </div>
+
+        <script>
+          window.onload = function() {
+            setTimeout(function() {
+              window.print();
+            }, 300);
+          }
+        </script>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   useEffect(() => {
     // Resolve params de forma compatível com Next.js antigo (síncrono) e novo (assíncrono)
     Promise.resolve(params).then((resolved) => {
@@ -964,7 +1191,7 @@ export default function EventDetail({ params }) {
               )}
             </div>
 
-            <div style={{ marginTop: '2.5rem', display: 'flex', gap: '1rem' }}>
+            <div style={{ marginTop: '2.5rem', display: 'flex', gap: '0.8rem', flexWrap: 'wrap' }}>
               <button 
                 onClick={() => {
                   const cleanPhone = activeFichaContact.phone?.replace(/\D/g, '') || '';
@@ -978,15 +1205,25 @@ export default function EventDetail({ params }) {
                   window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
                 }}
                 className="btn"
-                style={{ background: 'transparent', border: '1px solid #2d4a3e', color: '#2d4a3e', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                style={{ background: 'transparent', border: '1px solid #2d4a3e', color: '#2d4a3e', flex: '1 1 120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.6rem' }}
               >
                 <span>📲 WhatsApp</span>
               </button>
 
+              {activeFichaContact.remedio !== 'não informado' && (
+                <button 
+                  onClick={() => exportFichaPDF(activeFichaContact)}
+                  className="btn"
+                  style={{ background: '#fcfaf6', border: '1px solid #8b7e66', color: '#8b7e66', flex: '1 1 120px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', padding: '0.6rem' }}
+                >
+                  <span>📄 Exportar PDF</span>
+                </button>
+              )}
+
               <button 
                 onClick={() => setActiveFichaContact(null)} 
                 className="btn btn-primary"
-                style={{ background: '#2d4a3e', border: 'none', padding: '0.6rem 1.8rem', color: 'white', cursor: 'pointer', borderRadius: '4px', flex: 1 }}
+                style={{ background: '#2d4a3e', border: 'none', padding: '0.6rem', color: 'white', cursor: 'pointer', borderRadius: '4px', flex: '1 1 120px' }}
               >
                 Fechar Ficha
               </button>
