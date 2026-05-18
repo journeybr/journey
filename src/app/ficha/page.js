@@ -344,15 +344,28 @@ export default function PublicFicha() {
       fontFamily: 'system-ui, -apple-system, sans-serif',
       color: '#3a413d'
     }}>
-      <div style={{
-        background: '#ffffff',
-        border: '1px solid #d4cbb8', // Borda sutil de tom areia premium
-        borderRadius: '20px',
-        padding: '3rem',
-        width: '100%',
-        maxWidth: '580px',
-        boxShadow: '0 16px 40px rgba(139, 126, 102, 0.08)',
-      }}>
+      <style dangerouslySetInnerHTML={{__html: `
+        @media (max-width: 600px) {
+          .responsive-card {
+            padding: 1.5rem !important;
+          }
+          .responsive-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}} />
+      <div 
+        className="responsive-card"
+        style={{
+          background: '#ffffff',
+          border: '1px solid #d4cbb8', // Borda sutil de tom areia premium
+          borderRadius: '20px',
+          padding: '3rem',
+          width: '100%',
+          maxWidth: '580px',
+          boxShadow: '0 16px 40px rgba(139, 126, 102, 0.08)',
+        }}
+      >
         {submitted ? (
           <div style={{ textAlign: 'center', padding: '2rem 0' }}>
             <div style={{
@@ -600,7 +613,7 @@ export default function PublicFicha() {
                   </div>
 
                   {/* Dosagem & Frequência Lado a Lado */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
+                  <div className="responsive-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                       <label style={{ fontSize: '0.8rem', fontWeight: '600', color: '#4a534f' }}>Dosagem</label>
                       <input 
