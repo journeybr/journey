@@ -186,8 +186,8 @@ export default function PublicFicha() {
 
       let activeContactId = contactId;
 
-      if (!activeContactId) {
-        // Criar contato anônimo para rastrear abandono
+      if (!activeContactId && !isFinalSubmit) {
+        // 1. Criação do Contato Anônimo (Step Inicial via Link Genérico)
         const { data, error } = await supabase.from('contacts').insert([{
           name: formData.nome_completo || 'Visitante Não Identificado',
           status: 'Ficha em Preenchimento',
@@ -201,17 +201,79 @@ export default function PublicFicha() {
           activeContactId = data[0].id;
           setContactId(activeContactId);
         }
-      } else {
-        // Atualizar contato existente
-        if (isFinalSubmit) {
-           payload.name = formData.nome_completo;
-           payload.cpf = formData.cpf.replace(/\D/g, '');
-           payload.phone = formData.telefone;
-           payload.remedio = medications.length > 0 ? 'em andamento' : 'não';
-           payload.observations = `[Ficha Médica Completa via Wizard]\n\nContato de Emergência: ${formData.contato_emergencia}\nData de Nascimento: ${formData.data_nascimento}\n\nObservações Médicas: ${formData.sec3_obs}\nHistórico Psiquiátrico: ${formData.sec2_historico_obs}\nSubstâncias Recentes: ${formData.sec4_psicoativas_obs}`;
-        }
+      } else if (activeContactId && !isFinalSubmit) {
+        // 2. Atualização incremental (Steps 2 a 5)
         const { error } = await supabase.from('contacts').update(payload).eq('id', activeContactId);
         if (error) throw error;
+      } else if (isFinalSubmit) {
+        // 3. STEP 6 - Cruzamento de Dados e Submissão Final
+        const cleanPhone = formData.telefone.replace(/\D/g, '');
+        const cleanCpf = formData.cpf.replace(/\D/g, '');
+        
+        let matchedExistingId = null;
+        let existingObs = '';
+        
+        // Tenta cruzar caso seja um link genérico ou quisermos garantir unificação
+        if (isGenericLink) {
+          // A. Cruzamento por Telefone Exato
+          let { data: phoneMatches } = await supabase.from('contacts').select('id, observations').eq('phone', cleanPhone);
+          phoneMatches = phoneMatches?.filter(m => m.id !== activeContactId) || [];
+          
+          if (phoneMatches.length > 0) {
+            matchedExistingId = phoneMatches[0].id;
+            existingObs = phoneMatches[0].observations || '';
+          } else {
+            // B. Cruzamento por Telefone Parcial (últimos 9 dígitos)
+            const last9 = cleanPhone.slice(-9);
+            if (last9.length >= 8) {
+              let { data: partialPhone } = await supabase.from('contacts').select('id, observations').ilike('phone', `%${last9}%`);
+              partialPhone = partialPhone?.filter(m => m.id !== activeContactId) || [];
+              if (partialPhone.length > 0) {
+                matchedExistingId = partialPhone[0].id;
+                existingObs = partialPhone[0].observations || '';
+              }
+            }
+          }
+          
+          // C. Cruzamento por CPF
+          if (!matchedExistingId && cleanCpf) {
+            let { data: cpfMatches } = await supabase.from('contacts').select('id, observations').eq('cpf', cleanCpf);
+            cpfMatches = cpfMatches?.filter(m => m.id !== activeContactId) || [];
+            if (cpfMatches.length > 0) {
+              matchedExistingId = cpfMatches[0].id;
+              existingObs = cpfMatches[0].observations || '';
+            }
+          }
+        }
+        
+        payload.name = formData.nome_completo;
+        payload.cpf = cleanCpf;
+        payload.phone = formData.telefone;
+        payload.remedio = medications.length > 0 ? 'em andamento' : 'não';
+        // Quando finalizar o form, o step pode ir para 7 indicando 100% completo, ou manter no 6.
+        payload.medical_form_step = 6; 
+        
+        const medicalNote = `[Ficha Médica Completa via Wizard]\n\nContato de Emergência: ${formData.contato_emergencia}\nData de Nascimento: ${formData.data_nascimento}\n\nObservações Médicas: ${formData.sec3_obs}\nHistórico Psiquiátrico: ${formData.sec2_historico_obs}\nSubstâncias Recentes: ${formData.sec4_psicoativas_obs}`;
+        payload.observations = existingObs ? `${existingObs}\n\n${medicalNote}` : medicalNote;
+        
+        if (matchedExistingId) {
+          // MATCH ENCONTRADO: Atualiza o contato real e apaga o temporário anônimo!
+          const { error: updateReal } = await supabase.from('contacts').update(payload).eq('id', matchedExistingId);
+          if (updateReal) throw updateReal;
+          
+          if (activeContactId) {
+             await supabase.from('contacts').delete().eq('id', activeContactId);
+          }
+        } else {
+          // NENHUM MATCH: Converte o temporário anônimo no perfil oficial!
+          if (activeContactId) {
+             const { error: finalUpdate } = await supabase.from('contacts').update(payload).eq('id', activeContactId);
+             if (finalUpdate) throw finalUpdate;
+          } else {
+             // Caso raríssimo de falha de gravação no Step 1, força criação.
+             await supabase.from('contacts').insert([{ ...payload, status: 'Prospecto', avisar: 'Sempre', experiences_count: 0 }]);
+          }
+        }
       }
 
       if (isFinalSubmit) {
