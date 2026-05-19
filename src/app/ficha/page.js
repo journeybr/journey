@@ -37,53 +37,60 @@ export default function PublicFicha() {
   const [suggestions, setSuggestions] = useState([]);
 
   const [formData, setFormData] = useState({
-    sec1_maioridade: false,
-    sec1_voluntaria: false,
-    sec1_leitura: false,
-    sec1_leitura_nao_li: false,
-    sec1_instrucoes: false,
-    sec1_conforto: false,
-    
-    sec2_esquizofrenia: false,
-    sec2_psicose_familiar: false,
-    sec2_condicoes_instaveis: false,
-    sec2_ideacao: false,
-    sec2_raiva: false,
-    sec2_historico_nao_informado: false,
-    sec2_historico_obs: '',
-    
-    sec3_cushing: false,
-    sec3_incapacitantes: false,
-    sec3_cardio: false,
-    sec3_neuro: false,
-    sec3_obs: '',
-    
-    sec4_compromisso_informar: false,
-    sec4_experiencias_recentes: false,
-    sec4_interacoes: false,
-    sec4_contraindicados: false,
-    sec4_dependencia: false,
-    sec4_abstinencia: false,
-    sec4_substancias_nao_autorizadas: false,
-    sec4_psicoativas_obs: '',
-    
-    sec5_processos_intensos: false,
-    sec5_sem_garantia: false,
-    sec5_riscos: false,
-    sec5_informacoes_suficientes: false,
-    sec5_veracidade: false,
-    sec5_responsabilidade_conduta: false,
-    sec5_omissoes: false,
-    sec5_limitacao: false,
-    sec5_duvidas: false,
-    
-    sec6_leitura_integral: false,
-    sec6_veracidade_final: false,
+    // Seção 1 - Identificação
     nome_completo: '',
     data_nascimento: '',
     cpf: '',
     telefone: '',
     contato_emergencia: '',
+
+    // Seção 2 - Declaração Inicial
+    sec2_maioridade: false,
+    sec2_voluntaria: false,
+    sec2_leitura: false,
+    sec2_leitura_nao_li: false,
+    sec2_instrucoes: false,
+    sec2_conforto: false,
+    
+    // Seção 3 - Saúde Mental
+    sec3_esquizofrenia: false,
+    sec3_psicose_familiar: false,
+    sec3_condicoes_instaveis: false,
+    sec3_ideacao: false,
+    sec3_raiva: false,
+    sec3_historico_nao_informado: false,
+    sec3_historico_obs: '',
+    
+    // Seção 4 - Saúde Física
+    sec4_cushing: false,
+    sec4_incapacitantes: false,
+    sec4_cardio: false,
+    sec4_neuro: false,
+    sec4_obs: '',
+    
+    // Seção 5 - Medicamentos / Substâncias
+    sec5_compromisso_informar: false,
+    sec5_experiencias_recentes: false,
+    sec5_interacoes: false,
+    sec5_contraindicados: false,
+    sec5_dependencia: false,
+    sec5_abstinencia: false,
+    sec5_substancias_nao_autorizadas: false,
+    sec5_psicoativas_obs: '',
+    
+    // Seção 6 - Riscos e Confirmação
+    sec6_processos_intensos: false,
+    sec6_sem_garantia: false,
+    sec6_riscos: false,
+    sec6_informacoes_suficientes: false,
+    sec6_veracidade: false,
+    sec6_responsabilidade_conduta: false,
+    sec6_omissoes: false,
+    sec6_limitacao: false,
+    sec6_duvidas: false,
+    sec6_leitura_integral: false,
+    sec6_veracidade_final: false,
+    
     data_assinatura: new Date().toLocaleDateString('pt-BR'),
     assinatura: ''
   });
@@ -118,7 +125,12 @@ export default function PublicFicha() {
             if (data.medical_form_data && Object.keys(data.medical_form_data).length > 0) {
               setFormData(prev => ({ ...prev, ...data.medical_form_data }));
             } else {
-              setFormData(prev => ({ ...prev, nome_completo: data.name || '', telefone: formattedPhone, cpf: formattedCpf }));
+              setFormData(prev => ({ 
+                ...prev, 
+                nome_completo: data.name || '', 
+                telefone: formattedPhone, 
+                cpf: formattedCpf 
+              }));
             }
           }
         };
@@ -178,6 +190,9 @@ export default function PublicFicha() {
   const saveProgress = async (stepToSave, isFinalSubmit = false) => {
     setLoading(true);
     try {
+      const cleanPhone = formData.telefone.replace(/\D/g, '');
+      const cleanCpf = formData.cpf.replace(/\D/g, '');
+
       const payload = {
         medical_form_step: stepToSave,
         medical_form_data: formData,
@@ -186,40 +201,16 @@ export default function PublicFicha() {
 
       let activeContactId = contactId;
 
-      if (!activeContactId && !isFinalSubmit) {
-        // 1. Criação do Contato Anônimo (Step Inicial via Link Genérico)
-        const { data, error } = await supabase.from('contacts').insert([{
-          name: formData.nome_completo || 'Visitante Não Identificado',
-          status: 'Ficha em Preenchimento',
-          avisar: 'Sempre',
-          experiences_count: 0,
-          ...payload
-        }]).select();
-        
-        if (error) throw error;
-        if (data && data[0]) {
-          activeContactId = data[0].id;
-          setContactId(activeContactId);
-        }
-      } else if (activeContactId && !isFinalSubmit) {
-        // 2. Atualização incremental (Steps 2 a 5)
-        const { error } = await supabase.from('contacts').update(payload).eq('id', activeContactId);
-        if (error) throw error;
-      } else if (isFinalSubmit) {
-        // 3. STEP 6 - Cruzamento de Dados e Submissão Final
-        const cleanPhone = formData.telefone.replace(/\D/g, '');
-        const cleanCpf = formData.cpf.replace(/\D/g, '');
-        
+      // Executa no primeiro avanço (Step 1 -> Step 2) ou no final
+      if (!activeContactId) {
+        // Tenta cruzar caso haja preexistente no banco
         let matchedExistingId = null;
         let existingObs = '';
-        
-        // Tenta cruzar caso seja um link genérico ou quisermos garantir unificação
-        if (isGenericLink) {
+
+        if (cleanPhone) {
           // A. Cruzamento por Telefone Exato
           let { data: phoneMatches } = await supabase.from('contacts').select('id, observations').eq('phone', cleanPhone);
-          phoneMatches = phoneMatches?.filter(m => m.id !== activeContactId) || [];
-          
-          if (phoneMatches.length > 0) {
+          if (phoneMatches && phoneMatches.length > 0) {
             matchedExistingId = phoneMatches[0].id;
             existingObs = phoneMatches[0].observations || '';
           } else {
@@ -227,53 +218,76 @@ export default function PublicFicha() {
             const last9 = cleanPhone.slice(-9);
             if (last9.length >= 8) {
               let { data: partialPhone } = await supabase.from('contacts').select('id, observations').ilike('phone', `%${last9}%`);
-              partialPhone = partialPhone?.filter(m => m.id !== activeContactId) || [];
-              if (partialPhone.length > 0) {
+              if (partialPhone && partialPhone.length > 0) {
                 matchedExistingId = partialPhone[0].id;
                 existingObs = partialPhone[0].observations || '';
               }
             }
           }
-          
+        }
+
+        if (!matchedExistingId && cleanCpf) {
           // C. Cruzamento por CPF
-          if (!matchedExistingId && cleanCpf) {
-            let { data: cpfMatches } = await supabase.from('contacts').select('id, observations').eq('cpf', cleanCpf);
-            cpfMatches = cpfMatches?.filter(m => m.id !== activeContactId) || [];
-            if (cpfMatches.length > 0) {
-              matchedExistingId = cpfMatches[0].id;
-              existingObs = cpfMatches[0].observations || '';
-            }
+          let { data: cpfMatches } = await supabase.from('contacts').select('id, observations').eq('cpf', cleanCpf);
+          if (cpfMatches && cpfMatches.length > 0) {
+            matchedExistingId = cpfMatches[0].id;
+            existingObs = cpfMatches[0].observations || '';
           }
         }
-        
-        payload.name = formData.nome_completo;
-        payload.cpf = cleanCpf;
-        payload.phone = formData.telefone;
-        payload.remedio = medications.length > 0 ? 'em andamento' : 'não';
-        // Quando finalizar o form, o step pode ir para 7 indicando 100% completo, ou manter no 6.
-        payload.medical_form_step = 6; 
-        
-        const medicalNote = `[Ficha Médica Completa via Wizard]\n\nContato de Emergência: ${formData.contato_emergencia}\nData de Nascimento: ${formData.data_nascimento}\n\nObservações Médicas: ${formData.sec3_obs}\nHistórico Psiquiátrico: ${formData.sec2_historico_obs}\nSubstâncias Recentes: ${formData.sec4_psicoativas_obs}`;
-        payload.observations = existingObs ? `${existingObs}\n\n${medicalNote}` : medicalNote;
-        
+
         if (matchedExistingId) {
-          // MATCH ENCONTRADO: Atualiza o contato real e apaga o temporário anônimo!
-          const { error: updateReal } = await supabase.from('contacts').update(payload).eq('id', matchedExistingId);
-          if (updateReal) throw updateReal;
+          activeContactId = matchedExistingId;
+          setContactId(matchedExistingId);
           
-          if (activeContactId) {
-             await supabase.from('contacts').delete().eq('id', activeContactId);
-          }
+          // Atualiza o contato preexistente com os dados inseridos
+          const { error } = await supabase.from('contacts').update({
+            name: formData.nome_completo,
+            phone: formData.telefone,
+            cpf: cleanCpf,
+            status: 'Ficha em Preenchimento',
+            ...payload
+          }).eq('id', matchedExistingId);
+          if (error) throw error;
         } else {
-          // NENHUM MATCH: Converte o temporário anônimo no perfil oficial!
-          if (activeContactId) {
-             const { error: finalUpdate } = await supabase.from('contacts').update(payload).eq('id', activeContactId);
-             if (finalUpdate) throw finalUpdate;
-          } else {
-             // Caso raríssimo de falha de gravação no Step 1, força criação.
-             await supabase.from('contacts').insert([{ ...payload, status: 'Prospecto', avisar: 'Sempre', experiences_count: 0 }]);
+          // Cria um contato novo se não cruzou
+          const { data, error } = await supabase.from('contacts').insert([{
+            name: formData.nome_completo,
+            phone: formData.telefone,
+            cpf: cleanCpf,
+            status: 'Ficha em Preenchimento',
+            avisar: 'Sempre',
+            experiences_count: 0,
+            ...payload
+          }]).select();
+          
+          if (error) throw error;
+          if (data && data[0]) {
+            activeContactId = data[0].id;
+            setContactId(activeContactId);
           }
         }
+      } else {
+        // Se já temos a ID ativa (atualização do wizard nos passos seguintes)
+        const updatePayload = { ...payload };
+        
+        // Em toda mudança de etapa, garante que salvamos o nome e contato se mudou
+        updatePayload.name = formData.nome_completo;
+        updatePayload.phone = formData.telefone;
+        updatePayload.cpf = cleanCpf;
+
+        if (isFinalSubmit) {
+          updatePayload.remedio = medications.length > 0 ? 'em andamento' : 'não';
+          updatePayload.status = 'Prospecto'; // Devolve para prospecto após assinado
+          
+          // Gera observações formatadas e acumula com as anteriores
+          let { data: c } = await supabase.from('contacts').select('observations').eq('id', activeContactId).single();
+          const existingObs = c?.observations || '';
+          const medicalNote = `[Ficha Médica Completa via Wizard]\n\nContato de Emergência: ${formData.contato_emergencia}\nData de Nascimento: ${formData.data_nascimento}\n\nObservações Médicas: ${formData.sec4_obs}\nHistórico Psiquiátrico: ${formData.sec3_historico_obs}\nSubstâncias Recentes: ${formData.sec5_psicoativas_obs}`;
+          updatePayload.observations = existingObs ? `${existingObs}\n\n${medicalNote}` : medicalNote;
+        }
+
+        const { error } = await supabase.from('contacts').update(updatePayload).eq('id', activeContactId);
+        if (error) throw error;
       }
 
       if (isFinalSubmit) {
@@ -289,7 +303,12 @@ export default function PublicFicha() {
   };
 
   const nextStep = () => {
-    // Basic validation per step can be added here
+    if (currentStep === 1) {
+      if (!formData.nome_completo || !formData.cpf || !formData.telefone || !formData.data_nascimento) {
+        alert("Por favor, preencha todos os campos obrigatórios na etapa de identificação.");
+        return;
+      }
+    }
     saveProgress(currentStep + 1);
   };
 
@@ -299,8 +318,12 @@ export default function PublicFicha() {
 
   const submitForm = (e) => {
     e.preventDefault();
-    if (!formData.nome_completo || !formData.cpf || !formData.telefone || !formData.assinatura) {
-      alert("Por favor, preencha os campos obrigatórios (Nome, CPF, Telefone e Assinatura).");
+    if (!formData.assinatura) {
+      alert("Por favor, insira sua assinatura eletrônica na etapa final.");
+      return;
+    }
+    if (!formData.sec6_leitura_integral || !formData.sec6_veracidade_final) {
+      alert("Você deve confirmar a leitura integral e veracidade marcando os checkboxes correspondentes.");
       return;
     }
     saveProgress(6, true);
@@ -346,33 +369,63 @@ export default function PublicFicha() {
             <form onSubmit={currentStep === 6 ? submitForm : (e) => { e.preventDefault(); nextStep(); }}>
               
               {currentStep === 1 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>1. Declaração Inicial</h3>
-                  {renderCheckbox('sec1_maioridade', 'Confirmo ter maioridade e capacidade legal para responder este questionário.')}
-                  {renderCheckbox('sec1_voluntaria', 'Confirmo minha participação voluntária e consciente na vivência.')}
-                  {renderCheckbox('sec1_leitura', 'Li o documento completo de preparação enviado pela organização.')}
-                  {renderCheckbox('sec1_leitura_nao_li', 'Não li o documento de preparação ainda, mas me comprometo a fazê-lo.', { style: { background: '#fff9e6' } })}
-                  {renderCheckbox('sec1_instrucoes', 'Comprometo-me a seguir todas as instruções da equipe de guias.')}
-                  {renderCheckbox('sec1_conforto', 'Sinto conforto e aceito a responsabilidade pela autorreflexão e comunicação honesta das minhas emoções.')}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                  <h3 style={{ margin: '0 0 0.5rem 0', color: '#1a1a1a' }}>1. Identificação Inicial</h3>
+                  <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Por favor, informe seus dados básicos para darmos início ao acompanhamento.</p>
+                  
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div style={{ gridColumn: '1 / span 2' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Nome Completo *</label>
+                      <input required type="text" name="nome_completo" value={formData.nome_completo} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>CPF *</label>
+                      <input required type="text" name="cpf" value={formData.cpf} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Data de Nascimento *</label>
+                      <input required type="text" placeholder="DD/MM/AAAA" name="data_nascimento" value={formData.data_nascimento} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Telefone / WhatsApp *</label>
+                      <input required type="text" name="telefone" value={formData.telefone} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Contato de Emergência</label>
+                      <input type="text" placeholder="(Nome e Telefone)" name="contato_emergencia" value={formData.contato_emergencia} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
+                    </div>
+                  </div>
                 </div>
               )}
 
               {currentStep === 2 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>2. Saúde Mental e Histórico Psiquiátrico</h3>
+                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>2. Declaração Inicial</h3>
+                  {renderCheckbox('sec2_maioridade', 'Confirmo ter maioridade e capacidade legal para responder este questionário.')}
+                  {renderCheckbox('sec2_voluntaria', 'Confirmo minha participação voluntária e consciente na vivência.')}
+                  {renderCheckbox('sec2_leitura', 'Li o documento completo de preparação enviado pela organização.')}
+                  {renderCheckbox('sec2_leitura_nao_li', 'Não li o documento de preparação ainda, mas me comprometo a fazê-lo.', { style: { background: '#fff9e6' } })}
+                  {renderCheckbox('sec2_instrucoes', 'Comprometo-me a seguir todas as instruções da equipe de guias.')}
+                  {renderCheckbox('sec2_conforto', 'Sinto conforto e aceito a responsabilidade pela autorreflexão e comunicação honesta das minhas emoções.')}
+                </div>
+              )}
+
+              {currentStep === 3 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>3. Saúde Mental e Histórico Psiquiátrico</h3>
                   <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Confirmo a AUSÊNCIA das seguintes condições abaixo:</p>
-                  {renderCheckbox('sec2_esquizofrenia', 'Esquizofrenia, transtornos psicóticos, bipolaridade tipo I ou II, transtornos de personalidade (borderline, narcisista, esquizoide).')}
-                  {renderCheckbox('sec2_psicose_familiar', 'Histórico familiar direto de esquizofrenia ou psicose.')}
-                  {renderCheckbox('sec2_condicoes_instaveis', 'Condições mentais instáveis ou agudas no momento.')}
-                  {renderCheckbox('sec2_ideacao', 'Ideação suicida ou homicida recente.')}
-                  {renderCheckbox('sec2_raiva', 'Problemas graves de controle de raiva ou impulsividade.')}
+                  {renderCheckbox('sec3_esquizofrenia', 'Esquizofrenia, transtornos psicóticos, bipolaridade tipo I ou II, transtornos de personalidade (borderline, narcisista, esquizoide).')}
+                  {renderCheckbox('sec3_psicose_familiar', 'Histórico familiar direto de esquizofrenia ou psicose.')}
+                  {renderCheckbox('sec3_condicoes_instaveis', 'Condições mentais instáveis ou agudas no momento.')}
+                  {renderCheckbox('sec3_ideacao', 'Ideação suicida ou homicida recente.')}
+                  {renderCheckbox('sec3_raiva', 'Problemas graves de controle de raiva ou impulsividade.')}
                   
                   <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e5dfd3' }}>
-                    {renderCheckbox('sec2_historico_nao_informado', 'Possuo histórico psiquiátrico ou condição relevante não citada acima que precisa ser informada.', { style: { background: '#fcfaf6' } })}
-                    {formData.sec2_historico_nao_informado && (
+                    {renderCheckbox('sec3_historico_nao_informado', 'Possuo histórico psiquiátrico ou condição relevante não citada acima que precisa ser informada.', { style: { background: '#fcfaf6' } })}
+                    {formData.sec3_historico_nao_informado && (
                       <textarea
-                        name="sec2_historico_obs"
-                        value={formData.sec2_historico_obs}
+                        name="sec3_historico_obs"
+                        value={formData.sec3_historico_obs}
                         onChange={handleInputChange}
                         placeholder="Descreva aqui o histórico ou condição em detalhes..."
                         style={{ width: '100%', minHeight: '100px', padding: '1rem', marginTop: '1rem', border: '1px solid #d4cbb8', borderRadius: '8px', fontFamily: 'inherit', resize: 'vertical' }}
@@ -382,20 +435,20 @@ export default function PublicFicha() {
                 </div>
               )}
 
-              {currentStep === 3 && (
+              {currentStep === 4 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>3. Saúde Física e Histórico Médico</h3>
+                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>4. Saúde Física e Histórico Médico</h3>
                   <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem' }}>Confirmo a AUSÊNCIA das seguintes condições médicas:</p>
-                  {renderCheckbox('sec3_cushing', 'Síndrome de Cushing.')}
-                  {renderCheckbox('sec3_incapacitantes', 'Condições médicas graves e incapacitantes.')}
-                  {renderCheckbox('sec3_cardio', 'Doenças cardiovasculares graves, hipertensão não controlada, aneurisma ou arritmias.')}
-                  {renderCheckbox('sec3_neuro', 'Distúrbios neurológicos graves (AVC, epilepsia crônica, convulsões recentes, lesão cerebral).')}
+                  {renderCheckbox('sec4_cushing', 'Síndrome de Cushing.')}
+                  {renderCheckbox('sec4_incapacitantes', 'Condições médicas graves e incapacitantes.')}
+                  {renderCheckbox('sec4_cardio', 'Doenças cardiovasculares graves, hipertensão não controlada, aneurisma ou arritmias.')}
+                  {renderCheckbox('sec4_neuro', 'Distúrbios neurológicos graves (AVC, epilepsia crônica, convulsões recentes, lesão cerebral).')}
                   
                   <div style={{ marginTop: '1rem' }}>
                     <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#3a413d', display: 'block', marginBottom: '0.5rem' }}>Observações Físicas / Cirurgias Recentes (Opcional)</label>
                     <textarea
-                      name="sec3_obs"
-                      value={formData.sec3_obs}
+                      name="sec4_obs"
+                      value={formData.sec4_obs}
                       onChange={handleInputChange}
                       placeholder="Alguma alergia severa, limitação de mobilidade ou observação relevante?"
                       style={{ width: '100%', minHeight: '100px', padding: '1rem', border: '1px solid #d4cbb8', borderRadius: '8px', fontFamily: 'inherit', resize: 'vertical' }}
@@ -404,16 +457,16 @@ export default function PublicFicha() {
                 </div>
               )}
 
-              {currentStep === 4 && (
+              {currentStep === 5 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                  <h3 style={{ margin: '0 0 0.5rem 0', color: '#1a1a1a' }}>4. Substâncias, Medicamentos e Suplementos</h3>
-                  {renderCheckbox('sec4_compromisso_informar', 'Comprometo-me a informar absolutamente tudo que uso ou usei no último mês (mesmo ocasional, natural ou recreativo).')}
-                  {renderCheckbox('sec4_experiencias_recentes', 'Tenho experiências recentes com psicodélicos ou medicinas (ayahuasca, psilocibina, LSD, MDMA, DMT, mescalina, iboga, cannabis, rapé, sananga, ketamina, microdosagens).')}
-                  {renderCheckbox('sec4_interacoes', 'Estou ciente sobre as interações e riscos severos entre certas medicações e experiências profundas.')}
-                  {renderCheckbox('sec4_contraindicados', 'Confirmo a ausência de uso de medicamentos estritamente contraindicados (sem o aval e plano de desmame médico).')}
-                  {renderCheckbox('sec4_dependencia', 'Declaro ausência de histórico de dependência química grave atualmente sem acompanhamento.')}
-                  {renderCheckbox('sec4_abstinencia', 'Comprometo-me a realizar abstinência de substâncias não acordadas 72h antes da experiência.')}
-                  {renderCheckbox('sec4_substancias_nao_autorizadas', 'Comprometo-me a NÃO portar ou utilizar substâncias não autorizadas durante a vivência.')}
+                  <h3 style={{ margin: '0 0 0.5rem 0', color: '#1a1a1a' }}>5. Substâncias, Medicamentos e Suplementos</h3>
+                  {renderCheckbox('sec5_compromisso_informar', 'Comprometo-me a informar absolutamente tudo que uso ou usei no último mês (mesmo ocasional, natural ou recreativo).')}
+                  {renderCheckbox('sec5_experiencias_recentes', 'Tenho experiências recentes com psicodélicos ou medicinas (ayahuasca, psilocibina, LSD, MDMA, DMT, mescalina, iboga, cannabis, rapé, sananga, ketamina, microdosagens).')}
+                  {renderCheckbox('sec5_interacoes', 'Estou ciente sobre as interações e riscos severos entre certas medicações e experiências profundas.')}
+                  {renderCheckbox('sec5_contraindicados', 'Confirmo a ausência de uso de medicamentos estritamente contraindicados (sem o aval e plano de desmame médico).')}
+                  {renderCheckbox('sec5_dependencia', 'Declaro ausência de histórico de dependência química grave atualmente sem acompanhamento.')}
+                  {renderCheckbox('sec5_abstinencia', 'Comprometo-me a realizar abstinência de substâncias não acordadas 72h antes da experiência.')}
+                  {renderCheckbox('sec5_substancias_nao_autorizadas', 'Comprometo-me a NÃO portar ou utilizar substâncias não autorizadas durante a vivência.')}
                   
                   <div style={{ background: '#f5f3ef', padding: '1.5rem', borderRadius: '8px', border: '1px solid #d4cbb8', marginTop: '1rem' }}>
                     <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#2d4a3e', display: 'block', marginBottom: '1rem' }}>Medicamentos de Uso Contínuo e Suplementos</label>
@@ -447,8 +500,8 @@ export default function PublicFicha() {
                   <div style={{ marginTop: '0.5rem' }}>
                     <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#3a413d', display: 'block', marginBottom: '0.5rem' }}>Substâncias Psicoativas usadas no último mês</label>
                     <textarea
-                      name="sec4_psicoativas_obs"
-                      value={formData.sec4_psicoativas_obs}
+                      name="sec5_psicoativas_obs"
+                      value={formData.sec5_psicoativas_obs}
                       onChange={handleInputChange}
                       placeholder="Descreva a substância, data, dose, contexto e reações (caso tenha marcado a caixa de experiências recentes)."
                       style={{ width: '100%', minHeight: '100px', padding: '1rem', border: '1px solid #d4cbb8', borderRadius: '8px', fontFamily: 'inherit', resize: 'vertical' }}
@@ -457,52 +510,26 @@ export default function PublicFicha() {
                 </div>
               )}
 
-              {currentStep === 5 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>5. Ciência sobre Riscos e Responsabilidades</h3>
-                  {renderCheckbox('sec5_processos_intensos', 'Estou ciente de que podem ocorrer processos emocionais profundos, intensos, além de desconforto físico/psicológico, náuseas ou confusão.')}
-                  {renderCheckbox('sec5_sem_garantia', 'Reconheço que não há garantia de resultado terapêutico ou espiritual específico.')}
-                  {renderCheckbox('sec5_riscos', 'Reconheço a existência de riscos físicos e emocionais intrínsecos à vivência.')}
-                  {renderCheckbox('sec5_informacoes_suficientes', 'Recebi informações suficientes para tomar esta decisão de forma autônoma e consciente.')}
-                  {renderCheckbox('sec5_veracidade', 'Assumo total responsabilidade legal e moral pela veracidade das informações fornecidas nestas etapas.')}
-                  {renderCheckbox('sec5_responsabilidade_conduta', 'Assumo responsabilidade integral pela minha conduta antes, durante e após o evento.')}
-                  {renderCheckbox('sec5_omissoes', 'Estou ciente de que a omissão de dados psiquiátricos, médicos ou uso de substâncias aumenta severamente os riscos.')}
-                  {renderCheckbox('sec5_limitacao', 'Compreendo a limitação de responsabilidade dos organizadores na máxima extensão legal permitida.')}
-                  {renderCheckbox('sec5_duvidas', 'Ainda tenho dúvidas ou receios e desejo conversar com a equipe antes de assinar definitivamente.', { style: { background: '#fff9e6' } })}
-                </div>
-              )}
-
               {currentStep === 6 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                  <h3 style={{ margin: '0 0 0.5rem 0', color: '#1a1a1a' }}>6. Confirmação Final de Identidade</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <h3 style={{ margin: '0 0 1rem 0', color: '#1a1a1a' }}>6. Ciência sobre Riscos e Confirmação</h3>
+                  {renderCheckbox('sec6_processos_intensos', 'Estou ciente de que podem ocorrer processos emocionais profundos, intensos, além de desconforto físico/psicológico, náuseas ou confusão.')}
+                  {renderCheckbox('sec6_sem_garantia', 'Reconheço que não há garantia de resultado terapêutico ou espiritual específico.')}
+                  {renderCheckbox('sec6_riscos', 'Reconheço a existência de riscos físicos e emocionais intrínsecos à vivência.')}
+                  {renderCheckbox('sec6_informacoes_suficientes', 'Recebi informações suficientes para tomar esta decisão de forma autônoma e consciente.')}
+                  {renderCheckbox('sec6_veracidade', 'Assumo total responsabilidade legal e moral pela veracidade das informações fornecidas.')}
+                  {renderCheckbox('sec6_responsabilidade_conduta', 'Assumo responsabilidade integral pela minha conduta antes, durante e após o evento.')}
+                  {renderCheckbox('sec6_omissoes', 'Estou ciente de que a omissão de dados psiquiátricos, médicos ou uso de substâncias aumenta severamente os riscos.')}
+                  {renderCheckbox('sec6_limitacao', 'Compreendo a limitação de responsabilidade dos organizadores na máxima extensão legal permitida.')}
+                  {renderCheckbox('sec6_duvidas', 'Ainda tenho dúvidas ou receios e desejo conversar com a equipe antes de assinar definitivamente.', { style: { background: '#fff9e6' } })}
                   
-                  {renderCheckbox('sec6_leitura_integral', 'Confirmo a leitura integral deste termo.')}
-                  {renderCheckbox('sec6_veracidade_final', 'Declaro sob as penas da lei a veracidade incondicional de todas as informações.')}
+                  <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e5dfd3' }}>
+                    {renderCheckbox('sec6_leitura_integral', 'Confirmo a leitura integral deste termo.')}
+                    {renderCheckbox('sec6_veracidade_final', 'Declaro sob as penas da lei a veracidade incondicional de todas as informações prestadas.')}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-                    <div style={{ gridColumn: '1 / span 2' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Nome Completo *</label>
-                      <input required type="text" name="nome_completo" value={formData.nome_completo} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>CPF *</label>
-                      <input required type="text" name="cpf" value={formData.cpf} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Data de Nascimento *</label>
-                      <input required type="text" placeholder="DD/MM/AAAA" name="data_nascimento" value={formData.data_nascimento} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Telefone / WhatsApp *</label>
-                      <input required type="text" name="telefone" value={formData.telefone} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Contato de Emergência</label>
-                      <input type="text" placeholder="(Nome e Telefone)" name="contato_emergencia" value={formData.contato_emergencia} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
-                    </div>
-                    <div style={{ gridColumn: '1 / span 2', marginTop: '1rem', padding: '1.5rem', background: '#fcfaf6', border: '1px dashed #d4cbb8', borderRadius: '8px' }}>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#2d4a3e' }}>Assinatura Eletrônica (Digite seu nome completo como assinatura) *</label>
-                      <input required type="text" name="assinatura" placeholder="Escreva seu nome de punho eletrônico..." value={formData.assinatura} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #8b7e66', borderRadius: '6px', marginTop: '0.8rem', fontStyle: 'italic', fontFamily: 'serif', fontSize: '1.1rem' }} />
+                    <div style={{ marginTop: '1.5rem', padding: '1.5rem', background: '#fcfaf6', border: '1px dashed #d4cbb8', borderRadius: '8px' }}>
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#2d4a3e' }}>Assinatura Eletrônica (Digite seu nome completo) *</label>
+                      <input required type="text" name="assinatura" placeholder="Escreva seu nome completo como assinatura eletrônica..." value={formData.assinatura} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #8b7e66', borderRadius: '6px', marginTop: '0.8rem', fontStyle: 'italic', fontFamily: 'serif', fontSize: '1.1rem' }} />
                       <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.5rem', textAlign: 'right' }}>Assinado e datado em: {formData.data_assinatura}</div>
                     </div>
                   </div>
