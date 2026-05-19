@@ -19,7 +19,9 @@ create table if not exists contacts (
   avisar text default 'Sempre',
   remedio text default 'não informado',
   medications_list jsonb default '[]'::jsonb,
-  observations text
+  observations text,
+  medical_form_step integer default 0,
+  medical_form_data jsonb default '{}'::jsonb
 );
 
 -- 3. Tabela de Eventos (Cerimônias)
