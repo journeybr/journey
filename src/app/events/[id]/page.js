@@ -1267,6 +1267,69 @@ export default function EventDetail({ params }) {
                 </div>
               )}
 
+              {/* Status do Funil do Wizard */}
+              <div style={{ padding: '0.8rem', background: '#faf9f6', border: '1px solid #d4cbb8', borderRadius: '6px', marginTop: '0.2rem' }}>
+                <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e', display: 'block', marginBottom: '0.3rem' }}>Progresso do Preenchimento:</strong>
+                {activeFichaContact.medical_form_step >= 6 ? (
+                  <span style={{ color: '#27ae60', fontWeight: 'bold', fontSize: '0.9rem' }}>✅ 100% Concluído e Assinado</span>
+                ) : activeFichaContact.medical_form_step > 0 ? (
+                  <span style={{ color: '#e67e22', fontWeight: 'bold', fontSize: '0.9rem' }}>⏳ Incompleto (Parou no Passo {activeFichaContact.medical_form_step} de 6)</span>
+                ) : (
+                  <span style={{ color: '#7f8c8d', fontWeight: 'bold', fontSize: '0.9rem' }}>❌ Não Iniciou o Preenchimento</span>
+                )}
+              </div>
+
+              {/* Detalhes Resumidos das Respostas do Wizard */}
+              {activeFichaContact.medical_form_data && Object.keys(activeFichaContact.medical_form_data).length > 0 && (
+                <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid #e5dfd3', borderRadius: '6px', padding: '0.8rem', background: '#fff', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+                  <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e' }}>Declarações Respondidas:</strong>
+                  
+                  {/* Seção 2: Declaração Inicial */}
+                  <div style={{ fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Declaração Inicial (Passo 2)</div>
+                    <div>• Maioridade/Capacidade: {activeFichaContact.medical_form_data.sec2_maioridade ? 'Sim ✅' : 'Não ❌'}</div>
+                    <div>• Participação Voluntária: {activeFichaContact.medical_form_data.sec2_voluntaria ? 'Sim ✅' : 'Não ❌'}</div>
+                    <div>• Documento Preparação: {activeFichaContact.medical_form_data.sec2_leitura ? 'Lido ✅' : activeFichaContact.medical_form_data.sec2_leitura_nao_li ? 'Me comprometo a ler ⚠️' : 'Não ❌'}</div>
+                  </div>
+
+                  {/* Seção 3: Saúde Mental */}
+                  <div style={{ fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Saúde Mental (Passo 3)</div>
+                    <div>• Esquizofrenia/Psicose/Bipolaridade: {activeFichaContact.medical_form_data.sec3_esquizofrenia ? 'Ausente ✅' : 'Ausência não confirmada ❌'}</div>
+                    <div>• Histórico Familiar Psicose: {activeFichaContact.medical_form_data.sec3_psicose_familiar ? 'Ausente ✅' : 'Ausência não confirmada ❌'}</div>
+                    <div>• Ideação Suicida: {activeFichaContact.medical_form_data.sec3_ideacao ? 'Ausente ✅' : 'Ausência não confirmada ❌'}</div>
+                    {activeFichaContact.medical_form_data.sec3_historico_nao_informado && (
+                      <div style={{ color: '#c0392b', fontWeight: 'bold', marginTop: '0.2rem' }}>⚠️ Histórico médico adicional informado!</div>
+                    )}
+                  </div>
+
+                  {/* Seção 4: Saúde Física */}
+                  <div style={{ fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Saúde Física (Passo 4)</div>
+                    <div>• Doenças Cardiovasculares: {activeFichaContact.medical_form_data.sec4_cardio ? 'Ausente ✅' : 'Ausência não confirmada ❌'}</div>
+                    <div>• Distúrbios Neurologógicos: {activeFichaContact.medical_form_data.sec4_neuro ? 'Ausente ✅' : 'Ausência não confirmada ❌'}</div>
+                  </div>
+
+                  {/* Seção 5: Substâncias e Remédios */}
+                  <div style={{ fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Substâncias & Acordos (Passo 5)</div>
+                    <div>• Comprometer Informar Tudo: {activeFichaContact.medical_form_data.sec5_compromisso_informar ? 'Sim ✅' : 'Não ❌'}</div>
+                    <div>• Uso Recente Psicodélicos: {activeFichaContact.medical_form_data.sec5_experiencias_recentes ? 'Sim (declarado no campo) ⚠️' : 'Não ✅'}</div>
+                    <div>• Acordo de Abstinência 72h: {activeFichaContact.medical_form_data.sec5_abstinencia ? 'Sim ✅' : 'Não ❌'}</div>
+                  </div>
+
+                  {/* Seção 6: Riscos e Assinatura */}
+                  <div style={{ fontSize: '0.82rem' }}>
+                    <div style={{ fontWeight: 'bold', color: '#555', borderBottom: '1px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Assinatura Eletrônica (Passo 6)</div>
+                    <div>• Assinatura: <span style={{ fontFamily: 'serif', fontStyle: 'italic', fontSize: '0.95rem' }}>{activeFichaContact.medical_form_data.assinatura || 'Não assinada'}</span></div>
+                    {activeFichaContact.medical_form_data.sec6_duvidas && (
+                      <div style={{ color: '#d35400', fontWeight: 'bold' }}>⚠️ Viajante declarou ter dúvidas a tirar com a equipe.</div>
+                    )}
+                  </div>
+
+                </div>
+              )}
+
               <div>
                 <strong style={{ fontFamily: 'sans-serif', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px', color: '#2d4a3e' }}>Remédios Informados:</strong>
                 {activeFichaContact.remedio === 'não informado' ? (
