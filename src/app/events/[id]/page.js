@@ -1390,7 +1390,7 @@ export default function EventDetail({ params }) {
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '0.4rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '0.6rem' }}>
                 {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : [])].map(({ label, stats }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
                     <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
