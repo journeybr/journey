@@ -934,22 +934,34 @@ export default function EventDetail({ params }) {
     }
   }
 
+  function parsePhone(full) {
+    if (!full) return { ddi: '+55', localPhone: '' };
+    const codes = ['+351', '+54', '+57', '+52', '+55', '+1', '+44', '+49', '+33', '+34', '+39'];
+    for (const c of codes) {
+      if (full.startsWith(c)) return { ddi: c, localPhone: full.slice(c.length).replace(/[^\d]/g, '') };
+    }
+    return { ddi: '+55', localPhone: full.replace(/[^\d]/g, '') };
+  }
+
   function openContactEdit(contact) {
+    const { ddi, localPhone } = parsePhone(contact.phone || '');
     setContactEditModal({
       contactId: contact.id,
       addingToEvent: false,
       nickname: contact.nickname || contact.name || '',
       nome_completo: contact.nome_completo || '',
-      phone: contact.phone || '',
+      ddi,
+      phone: localPhone,
     });
   }
 
   async function saveContact() {
-    const { contactId, addingToEvent, nickname, nome_completo, phone } = contactEditModal;
+    const { contactId, addingToEvent, nickname, nome_completo, phone, ddi } = contactEditModal;
+    const fullPhone = phone ? `${ddi || '+55'}${phone}` : '';
 
     if (contactId && !addingToEvent) {
       // Editing an existing participant's contact fields
-      const fields = { name: nickname, nickname, nome_completo, phone };
+      const fields = { name: nickname, nickname, nome_completo, phone: fullPhone };
       const { error } = await supabase.from('contacts').update(fields).eq('id', contactId);
       if (!error) {
         setParticipants(prev => prev.map(p =>
@@ -980,16 +992,16 @@ export default function EventDetail({ params }) {
       fetchEventData();
     } else {
       // Creating a brand-new contact and adding to event
-      if (phone) {
-        const cleanNew = phone.replace(/\D/g, '');
+      if (fullPhone) {
+        const cleanNew = fullPhone.replace(/\D/g, '');
         const dup = allContacts.find(c => c.phone?.replace(/\D/g, '') === cleanNew);
         if (dup) {
-          if (!confirm(`O número ${phone} já está cadastrado para "${dup.nickname || dup.name}". Criar mesmo assim?`)) return;
+          if (!confirm(`O número ${fullPhone} já está cadastrado para "${dup.nickname || dup.name}". Criar mesmo assim?`)) return;
         }
       }
       const { data: newContact, error: cErr } = await supabase
         .from('contacts')
-        .insert([{ name: nickname, nickname, nome_completo, phone }])
+        .insert([{ name: nickname, nickname, nome_completo, phone: fullPhone }])
         .select()
         .single();
       if (cErr) { alert('Erro ao criar contato: ' + cErr.message); return; }
@@ -1378,7 +1390,7 @@ export default function EventDetail({ params }) {
                 </div>
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexShrink: 0, marginLeft: '0.75rem' }}>
                   {[
-                    { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', phone: '' }), icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
+                    { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' }), icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
                     { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> },
                     { title: 'Copiar link de interesse', onClick: () => { const link = `${window.location.origin}/interesse/${event.id}`; const text = event.invite_message ? `${event.invite_message}\n\n${link}` : link; navigator.clipboard.writeText(text); alert('Link de interesse copiado!'); }, icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                     { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
@@ -1412,7 +1424,7 @@ export default function EventDetail({ params }) {
           {!isMobile && (
             <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flexShrink: 0 }}>
               {[
-                { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', phone: '' }), icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
+                { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' }), icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
                 { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> },
                 { title: 'Copiar link de interesse', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/interesse/${event.id}`); alert('Link de interesse copiado!'); }, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                 { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
@@ -1441,7 +1453,7 @@ export default function EventDetail({ params }) {
         {participants.length === 0 ? (
           <div style={{ padding: '3rem 0', textAlign: 'center' }}>
             <p style={s.emptyNote}>Esta cerimônia ainda não possui participantes.</p>
-            <button style={{ ...s.btn, margin: '1rem auto' }} onClick={() => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', phone: '' })}>
+            <button style={{ ...s.btn, margin: '1rem auto' }} onClick={() => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' })}>
               Adicionar Participantes
             </button>
           </div>
@@ -1885,53 +1897,80 @@ export default function EventDetail({ params }) {
               </div>
             </div>
             <div style={{ padding: '1.2rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-              {[
-                { field: 'nickname', label: 'Nome' },
-                { field: 'nome_completo', label: 'Nome Completo (documentos)' },
-                { field: 'phone', label: 'Telefone (WhatsApp)' },
-              ].map(({ field, label }) => (
-                <div key={field} style={{ position: 'relative' }}>
-                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>{label}</div>
+              {/* Nome */}
+              <div style={{ position: 'relative' }}>
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Nome</div>
+                <input
+                  type="text"
+                  value={contactEditModal.nickname}
+                  onChange={e => setContactEditModal(prev => ({ ...prev, nickname: e.target.value, contactId: null }))}
+                  style={{ width: '100%', padding: '7px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                />
+                {!contactEditModal.contactId && contactEditModal.nickname.length >= 2 && (() => {
+                  const q = contactEditModal.nickname.toLowerCase();
+                  const matches = allContacts.filter(c => (c.nickname || c.name || '').toLowerCase().includes(q)).slice(0, 8);
+                  if (matches.length === 0) return null;
+                  return (
+                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fdfbf7', border: '0.5px solid #c8c2b8', borderTop: 'none', borderRadius: '0 0 2px 2px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 200 }}>
+                      {matches.map(c => (
+                        <button key={c.id} type="button"
+                          onClick={() => {
+                            const { ddi, localPhone } = parsePhone(c.phone || '');
+                            setContactEditModal(prev => ({ ...prev, contactId: c.id, nickname: c.nickname || c.name || '', nome_completo: c.nome_completo || '', ddi, phone: localPhone }));
+                          }}
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', background: 'transparent', border: 'none', borderBottom: '0.5px dashed #e8e0d8', padding: '7px 10px', cursor: 'pointer' }}
+                        >
+                          <span>{c.nickname || c.name}</span>
+                          {c.phone && <span style={{ fontSize: '9px', color: '#aaa49c' }}>{c.phone}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Nome Completo */}
+              <div>
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Nome Completo (documentos)</div>
+                <input
+                  type="text"
+                  value={contactEditModal.nome_completo}
+                  onChange={e => setContactEditModal(prev => ({ ...prev, nome_completo: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                />
+              </div>
+
+              {/* Telefone com DDI */}
+              <div>
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Telefone (WhatsApp)</div>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <select
+                    value={contactEditModal.ddi}
+                    onChange={e => setContactEditModal(prev => ({ ...prev, ddi: e.target.value }))}
+                    style={{ width: '96px', padding: '7px 6px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none', flexShrink: 0 }}
+                  >
+                    <option value="+55">🇧🇷 +55</option>
+                    <option value="+1">🇺🇸 +1</option>
+                    <option value="+351">🇵🇹 +351</option>
+                    <option value="+54">🇦🇷 +54</option>
+                    <option value="+57">🇨🇴 +57</option>
+                    <option value="+52">🇲🇽 +52</option>
+                    <option value="+56">🇨🇱 +56</option>
+                    <option value="+34">🇪🇸 +34</option>
+                    <option value="+39">🇮🇹 +39</option>
+                    <option value="+44">🇬🇧 +44</option>
+                    <option value="+49">🇩🇪 +49</option>
+                    <option value="+33">🇫🇷 +33</option>
+                  </select>
                   <input
-                    type="text"
-                    value={contactEditModal[field]}
-                    onChange={e => setContactEditModal(prev => ({
-                      ...prev,
-                      [field]: e.target.value,
-                      ...(field === 'nickname' ? { contactId: null } : {}),
-                    }))}
-                    style={{ width: '100%', padding: '7px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                    type="tel"
+                    value={contactEditModal.phone}
+                    onChange={e => setContactEditModal(prev => ({ ...prev, phone: e.target.value.replace(/[^\d]/g, '') }))}
+                    placeholder="11 99999 9999"
+                    style={{ flex: 1, padding: '7px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
                   />
-                  {field === 'nickname' && !contactEditModal.contactId && contactEditModal.nickname.length >= 2 && (() => {
-                    const q = contactEditModal.nickname.toLowerCase();
-                    const matches = allContacts.filter(c =>
-                      (c.nickname || c.name || '').toLowerCase().includes(q)
-                    ).slice(0, 8);
-                    if (matches.length === 0) return null;
-                    return (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fdfbf7', border: '0.5px solid #c8c2b8', borderTop: 'none', borderRadius: '0 0 2px 2px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 200 }}>
-                        {matches.map(c => (
-                          <button
-                            key={c.id}
-                            type="button"
-                            onClick={() => setContactEditModal(prev => ({
-                              ...prev,
-                              contactId: c.id,
-                              nickname: c.nickname || c.name || '',
-                              nome_completo: c.nome_completo || '',
-                              phone: c.phone || '',
-                            }))}
-                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', textAlign: 'left', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', background: 'transparent', border: 'none', borderBottom: '0.5px dashed #e8e0d8', padding: '7px 10px', cursor: 'pointer' }}
-                          >
-                            <span>{c.nickname || c.name}</span>
-                            {c.phone && <span style={{ fontSize: '9px', color: '#aaa49c' }}>{c.phone}</span>}
-                          </button>
-                        ))}
-                      </div>
-                    );
-                  })()}
                 </div>
-              ))}
+              </div>
             </div>
             <div style={{ padding: '0.5rem 1.5rem 1.2rem', display: 'flex', gap: '0.6rem' }}>
               <button

@@ -229,10 +229,6 @@ function CeremonyFormModal({ data, setData, onSubmit, onClose, title, submitLabe
               </div>
             )}
           </div>
-          <div style={{ marginBottom: '1.2rem' }}>
-            <label style={modalLabelStyle}>Descrição / Anotações</label>
-            <textarea value={data.description} onChange={e => setData({ ...data, description: e.target.value })} rows="2" style={{ ...modalInputStyle, resize: 'vertical' }} />
-          </div>
           {copySource && (
             <div style={{ marginBottom: '1rem', textAlign: 'right' }}>
               <button
@@ -282,7 +278,7 @@ export default function Events() {
   const [user, setUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-  const emptyForm = { name: '', date: '', date2: '', description: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '' };
+  const emptyForm = { name: '', date: '', date2: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '' };
   const [formData, setFormData] = useState(emptyForm);
   const [editFormData, setEditFormData] = useState(emptyForm);
   const [inactiveEvents, setInactiveEvents] = useState([]);
@@ -352,7 +348,7 @@ export default function Events() {
       name: event.name || '',
       date: event.date || '',
       date2: event.date2 || '',
-      description: event.description || '',
+
       image_url: event.image_url || '',
       invite_message: event.invite_message || '',
       address: event.address || '',
@@ -481,10 +477,6 @@ export default function Events() {
                     <div><strong>D1:</strong> {event.date ? new Date(event.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'A definir'}</div>
                     {event.date2 && <div><strong>D2:</strong> {new Date(event.date2).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>}
                   </div>
-
-                  <p style={{ flex: 1, fontSize: '0.82rem', fontStyle: 'italic', margin: '0 0 0.7rem', color: '#444', lineHeight: '1.4' }}>
-                    {event.description || 'Diário de Bordo'}
-                  </p>
 
                   {/* Footer */}
                   <div style={{ borderTop: '0.5px dashed #c2b59b', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
