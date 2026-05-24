@@ -314,13 +314,11 @@ const s = {
   },
   dayTag: {
     fontFamily: "'Courier Prime', monospace",
-    fontSize: "9px",
-    letterSpacing: "0.05em",
-    padding: "2px 6px",
-    borderRadius: "10px",
-    cursor: "pointer",
-    border: "none",
-    lineHeight: 1.4,
+    fontSize: "10px",
+    color: "#8a8278",
+    border: "0.5px solid #c8c2b8",
+    padding: "2px 5px",
+    borderRadius: "2px",
   },
   statusIcons: {
     display: "flex",
@@ -368,18 +366,23 @@ const s = {
   vagaReservado: {
     display: "inline-block",
     fontFamily: "'Courier Prime', monospace",
-    fontSize: "9px",
+    fontSize: "10px",
     color: "#8a7a58",
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
+    border: "0.5px solid #c8b888",
+    padding: "3px 8px",
+    borderRadius: "2px",
+    letterSpacing: "0.04em",
+    background: "#faf7f0",
   },
   vagaLivre: {
     display: "inline-block",
     fontFamily: "'Courier Prime', monospace",
-    fontSize: "9px",
-    color: "#c0b8b0",
-    letterSpacing: "0.06em",
-    textTransform: "uppercase",
+    fontSize: "10px",
+    color: "#9a9288",
+    border: "0.5px dashed #c8c2b8",
+    padding: "3px 8px",
+    borderRadius: "2px",
+    letterSpacing: "0.04em",
   },
   removeBtn: {
     background: "none",
@@ -1069,24 +1072,31 @@ export default function EventDetail({ params }) {
                 onClick={() => toggleDayPresence(p.contact_id, 1, p.date1_confirmed)}
                 style={{
                   ...s.dayTag,
-                  background: p.date1_confirmed ? '#3d6b52' : '#ede9e2',
-                  color: p.date1_confirmed ? '#f7f4ee' : '#b0a898',
+                  fontWeight: p.date1_confirmed ? 'bold' : 'normal',
+                  color: p.date1_confirmed ? '#3a3530' : '#c8c2b8',
+                  border: p.date1_confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8',
+                  cursor: 'pointer',
+                  background: 'transparent'
                 }}
                 title="Alternar Dia I"
               >
-                D1
+                {p.date1_confirmed ? 'D1' : <s>D1</s>}
               </button>
               {hasTwoDates && (
                 <button
                   onClick={() => toggleDayPresence(p.contact_id, 2, p.date2_confirmed)}
                   style={{
                     ...s.dayTag,
-                    background: p.date2_confirmed ? '#3d6b52' : '#ede9e2',
-                    color: p.date2_confirmed ? '#f7f4ee' : '#b0a898',
+                    fontWeight: p.date2_confirmed ? 'bold' : 'normal',
+                    color: p.date2_confirmed ? '#3a3530' : '#c8c2b8',
+                    border: p.date2_confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8',
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    marginLeft: '5px'
                   }}
                   title="Alternar Dia II"
                 >
-                  D2
+                  {p.date2_confirmed ? 'D2' : <s>D2</s>}
                 </button>
               )}
             </>
@@ -1247,8 +1257,8 @@ export default function EventDetail({ params }) {
     const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
     const badgeText = computeVagaBadge(p);
     const dayBtn = (day, confirmed) => (
-      <button key={day} onClick={() => toggleDayPresence(p.contact_id, day, confirmed)} style={{ ...s.dayTag, background: confirmed ? '#3d6b52' : '#ede9e2', color: confirmed ? '#f7f4ee' : '#b0a898' }}>
-        D{day}
+      <button key={day} onClick={() => toggleDayPresence(p.contact_id, day, confirmed)} style={{ ...s.dayTag, fontWeight: confirmed ? 'bold' : 'normal', color: confirmed ? '#3a3530' : '#c8c2b8', border: confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', cursor: 'pointer', background: 'transparent' }}>
+        {confirmed ? `D${day}` : <s>D{day}</s>}
       </button>
     );
     return (
