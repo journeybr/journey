@@ -196,7 +196,7 @@ const s = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: "0.4rem",
+    marginBottom: "1.5rem",
     flexWrap: "wrap",
     gap: "1rem",
   },
@@ -1390,7 +1390,7 @@ export default function EventDetail({ params }) {
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '0.6rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '0.8rem' }}>
                 {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : [])].map(({ label, stats }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
                     <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
@@ -1427,7 +1427,7 @@ export default function EventDetail({ params }) {
 
         {/* Filtro de dia */}
         {hasTwoDates && participants.length > 0 && (
-          <div style={{ display: 'flex', gap: '6px', marginTop: isMobile ? '1.4rem' : '0.5rem', marginBottom: '1.2rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', marginTop: isMobile ? '1.4rem' : '0rem', marginBottom: '1.8rem', alignItems: 'center' }}>
             <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginRight: '4px' }}>filtrar:</span>
             {[{ val: 'both', label: 'D1+D2' }, { val: 'day1', label: 'D1' }, { val: 'day2', label: 'D2' }].map(f => (
               <button key={f.val} onClick={() => setDayFilter(dayFilter === f.val ? null : f.val)} style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 9px', borderRadius: '2px', cursor: 'pointer', border: dayFilter === f.val ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', background: dayFilter === f.val ? '#3a3530' : 'transparent', color: dayFilter === f.val ? '#f7f4ee' : '#9a9288', transition: 'all 0.15s' }}>
