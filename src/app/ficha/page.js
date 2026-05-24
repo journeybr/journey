@@ -147,6 +147,13 @@ export default function PublicFicha() {
   const handleInputChange = (e) => {
     let { name, value } = e.target;
     
+    if (name === 'data_nascimento') {
+      value = value.replace(/\D/g, '');
+      if (value.length > 8) value = value.slice(0, 8);
+      if (value.length > 4) value = `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
+      else if (value.length > 2) value = `${value.slice(0, 2)}/${value.slice(2)}`;
+    }
+
     if (name === 'cpf') {
       value = value.replace(/\D/g, '');
       if (value.length > 11) value = value.slice(0, 11);
@@ -242,6 +249,7 @@ export default function PublicFicha() {
           // Atualiza o contato preexistente com os dados inseridos
           const { error } = await supabase.from('contacts').update({
             name: formData.nome_completo,
+            nome_completo: formData.nome_completo,
             phone: formData.telefone,
             cpf: cleanCpf,
             status: 'Ficha em Preenchimento',
@@ -252,6 +260,7 @@ export default function PublicFicha() {
           // Cria um contato novo se não cruzou
           const { data, error } = await supabase.from('contacts').insert([{
             name: formData.nome_completo,
+            nome_completo: formData.nome_completo,
             phone: formData.telefone,
             cpf: cleanCpf,
             status: 'Ficha em Preenchimento',
@@ -272,12 +281,14 @@ export default function PublicFicha() {
         
         // Em toda mudança de etapa, garante que salvamos o nome e contato se mudou
         updatePayload.name = formData.nome_completo;
+        updatePayload.nome_completo = formData.nome_completo;
         updatePayload.phone = formData.telefone;
         updatePayload.cpf = cleanCpf;
 
         if (isFinalSubmit) {
           updatePayload.remedio = medications.length > 0 ? 'em andamento' : 'não';
-          updatePayload.status = 'Prospecto'; // Devolve para prospecto após assinado
+          updatePayload.last_ficha_at = new Date().toISOString();
+          updatePayload.status = 'Prospecto';
           
           // Gera observações formatadas e acumula com as anteriores
           let { data: c } = await supabase.from('contacts').select('observations').eq('id', activeContactId).single();
@@ -291,6 +302,16 @@ export default function PublicFicha() {
       }
 
       if (isFinalSubmit) {
+        if (activeContactId) {
+          const { error: recErr } = await supabase.from('medical_records').insert([{
+            contact_id: activeContactId,
+            medical_form_data: formData,
+            medications_list: medications,
+            medical_form_step: stepToSave,
+            remedio: medications.length > 0 ? 'em andamento' : 'não',
+          }]);
+          if (recErr) console.error('medical_records insert error:', recErr.message);
+        }
         setSubmitted(true);
       } else {
         setCurrentStep(stepToSave);
@@ -304,7 +325,7 @@ export default function PublicFicha() {
 
   const nextStep = () => {
     if (currentStep === 1) {
-      if (!formData.nome_completo || !formData.cpf || !formData.telefone || !formData.data_nascimento) {
+      if (!formData.nome_completo || !formData.cpf || !formData.telefone) {
         alert("Por favor, preencha todos os campos obrigatórios na etapa de identificação.");
         return;
       }
@@ -383,8 +404,8 @@ export default function PublicFicha() {
                       <input required type="text" name="cpf" value={formData.cpf} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
                     </div>
                     <div>
-                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Data de Nascimento *</label>
-                      <input required type="text" placeholder="DD/MM/AAAA" name="data_nascimento" value={formData.data_nascimento} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
+                      <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Data de Nascimento</label>
+                      <input type="text" placeholder="DD/MM/AAAA" name="data_nascimento" value={formData.data_nascimento} onChange={handleInputChange} style={{ width: '100%', padding: '0.8rem', border: '1px solid #ccc', borderRadius: '6px', marginTop: '0.3rem' }} />
                     </div>
                     <div>
                       <label style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Telefone / WhatsApp *</label>

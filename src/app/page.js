@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 
 const ddiOptions = [
   { code: '+55', name: '🇧🇷 Brasil' },
-  { code: '+1', name: '🇺🇸 EUA/Canadá' },
+  { code: '+1',  name: '🇺🇸 EUA/Canadá' },
   { code: '+351', name: '🇵🇹 Portugal' },
   { code: '+34', name: '🇪🇸 Espanha' },
   { code: '+44', name: '🇬🇧 Reino Unido' },
@@ -16,107 +16,121 @@ const ddiOptions = [
   { code: '+57', name: '🇨🇴 Colômbia' },
   { code: '+52', name: '🇲🇽 México' },
   { code: '+39', name: '🇮🇹 Itália' },
-  { code: '+49', name: '🇩🇪 Alemanha' }
+  { code: '+49', name: '🇩🇪 Alemanha' },
 ];
+
+function exportMedicalRecordPDF(rec, contact) {
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) { alert('Permita pop-ups para exportar o PDF.'); return; }
+
+  const mfd = rec.medical_form_data || {};
+  const meds = rec.medications_list || [];
+  const displayName = contact.nickname || contact.name || 'Viajante';
+  const fichaDate = new Date(rec.created_at).toLocaleDateString('pt-BR');
+
+  const medsHTML = meds.length > 0
+    ? meds.map(m => `<div class="med-card"><div class="med-name">💊 ${m.name}</div>${(m.dosage || m.frequency) ? `<div class="med-desc">Dosagem: ${m.dosage || '—'} | Frequência: ${m.frequency || '—'}</div>` : ''}</div>`).join('')
+    : `<p class="no-info">Nenhum remédio de uso contínuo informado.</p>`;
+
+  const obsLines = [
+    mfd.sec4_obs && `Saúde física: ${mfd.sec4_obs}`,
+    mfd.sec3_historico_obs && `Histórico psiquiátrico: ${mfd.sec3_historico_obs}`,
+    mfd.sec5_psicoativas_obs && `Substâncias recentes: ${mfd.sec5_psicoativas_obs}`,
+  ].filter(Boolean);
+  const obsHTML = obsLines.length > 0
+    ? `<div class="observations">${obsLines.join('\n')}</div>`
+    : `<p class="no-info">Nenhuma observação declarada.</p>`;
+
+  printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Ficha Médica - ${displayName}</title>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@400;600&display=swap');
+      body { font-family: 'Lora', Georgia, serif; color: #2b2b2b; line-height: 1.6; padding: 3rem; max-width: 800px; margin: 0 auto; }
+      .header { text-align: center; border-bottom: 2px double #8b7e66; padding-bottom: 1.5rem; margin-bottom: 2.5rem; }
+      .header h1 { font-family: 'Cinzel', serif; font-size: 1.8rem; color: #2d4a3e; margin: 0; letter-spacing: 2px; text-transform: uppercase; }
+      .header p { font-family: 'Montserrat', sans-serif; font-size: 0.8rem; color: #666; margin: 0.5rem 0 0; text-transform: uppercase; letter-spacing: 1px; }
+      .section-title { font-family: 'Montserrat', sans-serif; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: #2d4a3e; border-bottom: 1px solid #d4cbb8; padding-bottom: 0.4rem; margin-top: 2rem; margin-bottom: 1.5rem; }
+      .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; font-size: 0.95rem; }
+      .info-item strong { font-family: 'Montserrat', sans-serif; font-size: 0.75rem; text-transform: uppercase; color: #555; display: block; margin-bottom: 0.2rem; }
+      .med-card { padding: 0.8rem 1.2rem; background: #faf9f6; border-left: 3px solid #2d4a3e; border: 1px solid #e8e2d5; border-left-width: 3px; border-radius: 6px; margin-bottom: 0.8rem; }
+      .med-name { font-weight: bold; color: #1a1a1a; }
+      .med-desc { font-size: 0.8rem; color: #555; font-style: italic; margin-top: 0.2rem; }
+      .observations { font-style: italic; color: #444; white-space: pre-wrap; background: #faf9f6; padding: 1rem 1.5rem; border: 1px dashed #d4cbb8; border-radius: 6px; margin-top: 0.5rem; font-size: 0.9rem; }
+      .no-info { color: #888; font-style: italic; font-size: 0.9rem; }
+      .decl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem; }
+      .decl-item { padding: 0.4rem 0.6rem; background: #faf9f6; border-radius: 4px; }
+      .signature-area { margin-top: 4rem; text-align: center; border-top: 1px solid #d4cbb8; padding-top: 1.5rem; }
+      .signature-text { font-family: 'Lora', serif; font-size: 1.15rem; font-style: italic; color: #1a1a1a; }
+      .signature-date { font-family: 'Montserrat', sans-serif; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; color: #666; margin-top: 0.3rem; }
+    </style></head><body>
+    <div class="header"><h1>Ficha Médica</h1><p>Journey · Confidencial · ${fichaDate}</p></div>
+    <div class="section-title">Identificação</div>
+    <div class="info-grid">
+      <div class="info-item"><strong>Viajante</strong>${displayName}</div>
+      <div class="info-item"><strong>Nome Completo</strong>${contact.nome_completo || mfd.nome_completo || '—'}</div>
+      <div class="info-item"><strong>Telefone</strong>${contact.phone || '—'}</div>
+      <div class="info-item"><strong>Remédios</strong>${rec.remedio === 'não' ? '✅ Sem remédios' : '⚠ Usa remédios'}</div>
+    </div>
+    <div class="section-title">Medicamentos de Uso Contínuo</div>${medsHTML}
+    <div class="section-title">Observações e Saúde</div>${obsHTML}
+    <div class="section-title">Declarações</div>
+    <div class="decl-grid">
+      <div class="decl-item">Maioridade: ${mfd.sec2_maioridade ? '✓' : '✕'}</div>
+      <div class="decl-item">Voluntária: ${mfd.sec2_voluntaria ? '✓' : '✕'}</div>
+      <div class="decl-item">Doc. preparação: ${mfd.sec2_leitura ? 'Lido ✓' : mfd.sec2_leitura_nao_li ? 'A ler ⚠' : '✕'}</div>
+      <div class="decl-item">Sem psicose/esquizofrenia: ${mfd.sec3_esquizofrenia ? '✓' : '✕'}</div>
+      <div class="decl-item">Sem ideação suicida: ${mfd.sec3_ideacao ? '✓' : '✕'}</div>
+      <div class="decl-item">Uso recente psicodélicos: ${mfd.sec5_experiencias_recentes ? 'Sim ⚠' : 'Não ✓'}</div>
+      <div class="decl-item">Abstinência 72h: ${mfd.sec5_abstinencia ? '✓' : '✕'}</div>
+      <div class="decl-item">Dúvidas com equipe: ${mfd.sec6_duvidas ? 'Sim ⚠' : 'Não ✓'}</div>
+    </div>
+    <div class="signature-area">
+      <div class="signature-text">Assinado eletronicamente por ${mfd.assinatura || displayName}</div>
+      <div class="signature-date">Preenchido em ${fichaDate}</div>
+    </div>
+    <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); }</script>
+    </body></html>`);
+  printWindow.document.close();
+}
 
 export default function Home() {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
-  const [viewMode, setViewMode] = useState('list'); // Padrão agora é lista
-  const [statuses, setStatuses] = useState([]); // Agora dinâmico
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    cpf: '',
-    origin: '',
-    experiences_count: 0,
-    phone: '',
-    status: '',
-    last_interaction: '',
-    avisar: 'Sempre',
-    remedio: 'não informado',
-    medications_list: [],
-    observations: ''
-  });
-  const [avisarOption, setAvisarOption] = useState('Sempre');
-  
-  // Próximos 12 meses dinâmicos baseados no dia de hoje
-  const getNext12Months = () => {
-    const months = [
-      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
-    ];
-    const result = [];
-    const now = new Date();
-    for (let i = 1; i <= 12; i++) {
-      const future = new Date(now.getFullYear(), now.getMonth() + i, 1);
-      const monthName = months[future.getMonth()];
-      const shortYear = future.getFullYear().toString().slice(-2);
-      result.push(`${monthName}/${shortYear}`);
-    }
-    return result;
-  };
-
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [medicalRecords, setMedicalRecords] = useState([]);
+  const [formData, setFormData] = useState({ nickname: '', nome_completo: '', });
   const [countryCode, setCountryCode] = useState('+55');
   const [phoneBody, setPhoneBody] = useState('');
-  const [isFirstExperience, setIsFirstExperience] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [openRemedioId, setOpenRemedioId] = useState(null);
-  const [adminMedName, setAdminMedName] = useState('');
-  const [adminMedDosage, setAdminMedDosage] = useState('');
-  const [adminMedFreq, setAdminMedFreq] = useState('');
   const router = useRouter();
 
-  const getRemedioIcon = (val) => {
-    const r = val?.toLowerCase() || 'não informado';
-    if (r === 'ok') return '✅';
-    if (r === 'em andamento') return '⏳';
-    if (r === 'não') return '🚫';
-    if (r === 'enviando link') return '🔗';
-    return '❓';
-  };
+  useEffect(() => { checkUser(); }, []);
 
   useEffect(() => {
-    checkUser();
-    setSelectedMonth(getNext12Months()[0]);
-  }, []);
+    if (editingContact) {
+      supabase
+        .from('medical_records')
+        .select('*')
+        .eq('contact_id', editingContact.id)
+        .order('created_at', { ascending: false })
+        .then(({ data }) => setMedicalRecords(data || []));
+    } else {
+      setMedicalRecords([]);
+    }
+  }, [editingContact]);
 
   async function checkUser() {
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      router.push('/login');
-    } else {
-      setUser(user);
-      fetchData();
-    }
+    if (!user) { router.push('/login'); }
+    else { setUser(user); fetchData(); }
   }
 
   async function fetchData() {
     setLoading(true);
-    
-    // Buscar contatos
-    const { data: contactData } = await supabase
-      .from('contacts')
-      .select('*')
-      .order('created_at', { ascending: false });
-    
-    // Buscar status cadastrados
-    const { data: statusData } = await supabase
-      .from('statuses')
-      .select('name')
-      .order('name');
-
-    if (contactData) setContacts(contactData);
-    if (statusData) {
-      setStatuses(statusData.map(s => s.name));
-      if (!formData.status && statusData.length > 0) {
-        setFormData(prev => ({ ...prev, status: statusData[0].name }));
-      }
-    }
-    
+    const { data } = await supabase.from('contacts').select('*').order('created_at', { ascending: false });
+    if (data) setContacts(data);
     setLoading(false);
   }
 
@@ -127,912 +141,248 @@ export default function Home() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    
-    // Combina o DDI e o corpo do telefone de forma limpa
     const combinedPhone = phoneBody ? `${countryCode}${phoneBody.replace(/\D/g, '')}` : '';
-    
-    // Define o número de experiências com base no checkbox de primeira experiência. Fallback para 1 caso esteja vazio.
-    const expCount = isFirstExperience ? 0 : (parseInt(formData.experiences_count) || 1);
 
-    // Sanitiza o campo de data para enviar NULL ao invés de string vazia ""
+    if (combinedPhone) {
+      const cleanNew = combinedPhone.replace(/\D/g, '');
+      const dup = contacts.find(c => {
+        const cClean = (c.phone || '').replace(/\D/g, '');
+        return cClean && cClean === cleanNew && c.id !== editingContact?.id;
+      });
+      if (dup) { alert(`Este número já está cadastrado para "${dup.nickname || dup.name}".`); return; }
+    }
+
     const dataToSave = {
-      name: formData.name,
-      cpf: formData.cpf ? formData.cpf.replace(/\D/g, '') : '',
-      origin: formData.origin,
-      experiences_count: expCount,
+      name: formData.nickname,
+      nickname: formData.nickname,
+      nome_completo: formData.nome_completo || '',
       phone: combinedPhone,
-      status: formData.status || statuses[0] || 'Prospecto',
-      last_interaction: formData.last_interaction === '' ? null : formData.last_interaction,
-      avisar: formData.avisar,
-      remedio: formData.remedio || 'não informado',
-      medications_list: formData.medications_list || [],
-      observations: formData.observations
     };
 
     if (editingContact) {
-      const { error } = await supabase
-        .from('contacts')
-        .update(dataToSave)
-        .eq('id', editingContact.id);
-
-      if (error) {
-        alert('Erro ao atualizar viajante: ' + error.message);
-      } else {
-        setIsModalOpen(false);
-        resetFormState();
-        fetchData();
-      }
+      const { error } = await supabase.from('contacts').update(dataToSave).eq('id', editingContact.id);
+      if (error) { alert('Erro: ' + error.message); return; }
     } else {
-      const { error } = await supabase
-        .from('contacts')
-        .insert([dataToSave]);
-
-      if (error) {
-        alert('Erro ao salvar contato: ' + error.message);
-      } else {
-        setIsModalOpen(false);
-        resetFormState();
-        fetchData();
-      }
+      const { error } = await supabase.from('contacts').insert([dataToSave]);
+      if (error) { alert('Erro: ' + error.message); return; }
     }
+    setIsModalOpen(false);
+    resetForm();
+    fetchData();
   }
 
-  function resetFormState() {
+  function resetForm() {
     setEditingContact(null);
-    setFormData({ 
-      name: '', 
-      cpf: '',
-      origin: '', 
-      experiences_count: 0, 
-      phone: '', 
-      status: statuses[0] || 'Prospecto', 
-      last_interaction: '', 
-      avisar: 'Sempre', 
-      remedio: 'não informado',
-      medications_list: [],
-      observations: '' 
-    });
-    setAvisarOption('Sempre');
-    setSelectedMonth(getNext12Months()[0]);
+    setFormData({ nickname: '', nome_completo: '' });
     setCountryCode('+55');
     setPhoneBody('');
-    setIsFirstExperience(true);
   }
 
-  async function handleStatusChange(contactId, newStatus) {
-    const { error } = await supabase
-      .from('contacts')
-      .update({ status: newStatus })
-      .eq('id', contactId);
-
-    if (error) {
-      alert('Erro ao atualizar status: ' + error.message);
-    } else {
-      // Atualização imediata no estado local (UX impecável)
-      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, status: newStatus } : c));
-    }
-  }
-
-  async function handleAvisarChange(contactId, newAvisar) {
-    const { error } = await supabase
-      .from('contacts')
-      .update({ avisar: newAvisar })
-      .eq('id', contactId);
-
-    if (error) {
-      alert('Erro ao atualizar notificação: ' + error.message);
-    } else {
-      // Atualização imediata no estado local
-      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, avisar: newAvisar } : c));
-    }
-  }
-
-  const getAvisarOptions = () => {
-    const list = ['Sempre', 'Nunca'];
-    getNext12Months().forEach(m => {
-      list.push(`A partir de ${m}`);
-    });
-    return list;
-  };
-
-  const getAvisarStyle = (avisar) => {
-    const val = avisar || 'Nunca';
-    const baseStyle = {
-      border: 'none',
-      cursor: 'pointer',
-      fontWeight: '600',
-      outline: 'none',
-      padding: '0.25rem 0.5rem',
-      borderRadius: '8px',
-      fontSize: '0.75rem',
-      appearance: 'none',
-      textAlign: 'center',
-      display: 'inline-block'
-    };
-
-    if (val === 'Nunca') {
-      return {
-        ...baseStyle,
-        background: 'rgba(239, 83, 80, 0.1)',
-        color: '#ef5350'
-      };
-    } else if (val === 'Sempre') {
-      return {
-        ...baseStyle,
-        background: 'rgba(102, 187, 106, 0.1)',
-        color: '#66bb6a'
-      };
-    } else {
-      return {
-        ...baseStyle,
-        background: 'rgba(66, 165, 245, 0.1)',
-        color: '#42a5f5'
-      };
-    }
-  };
-
-  const remedioOptions = [
-    { value: 'não informado', label: '❓ Não informado' },
-    { value: 'ok', label: '✅ Ok' },
-    { value: 'em andamento', label: '⏳ Em andamento' },
-    { value: 'não', label: '🚫 Não' },
-    { value: 'enviando link', label: '🔗 Enviando link' }
-  ];
-
-  async function handleRemedioChange(contactId, newRemedio) {
-    const { error } = await supabase
-      .from('contacts')
-      .update({ remedio: newRemedio })
-      .eq('id', contactId);
-
-    if (error) {
-      alert('Erro ao atualizar remédio: ' + error.message);
-    } else {
-      // Atualização imediata no estado local
-      setContacts(prev => prev.map(c => c.id === contactId ? { ...c, remedio: newRemedio } : c));
-
-      // Se for "enviando link", abre o WhatsApp com o link dinâmico preenchido!
-      if (newRemedio === 'enviando link') {
-        const contact = contacts.find(c => c.id === contactId);
-        if (contact && contact.phone) {
-          const cleanPhone = contact.phone.replace(/\D/g, '');
-          const firstName = contact.name.split(' ')[0];
-          const publicLink = `${window.location.origin}/ficha?nome=${encodeURIComponent(contact.name)}`;
-          const message = `Olá, ${firstName}! Por favor, preenche algumas informações sobre remédios que você está tomando.\n\nAlguns remédios interferem na experiência, ou mesmo inviabilizam ela.\n\nLink seguro para preenchimento: ${publicLink}`;
-          
-          window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
-        } else {
-          alert('Este viajante não tem telefone cadastrado para o envio da ficha.');
-        }
-      }
-    }
-  }
-
-  const getRemedioStyle = (remedio) => {
-    const val = remedio || 'não informado';
-    const baseStyle = {
-      border: 'none',
-      cursor: 'pointer',
-      fontWeight: '600',
-      outline: 'none',
-      padding: '0.25rem 0.5rem',
-      borderRadius: '8px',
-      fontSize: '0.75rem',
-      appearance: 'none',
-      textAlign: 'center',
-      display: 'inline-block'
-    };
-
-    if (val === 'ok') {
-      return {
-        ...baseStyle,
-        background: 'rgba(102, 187, 106, 0.1)',
-        color: '#66bb6a'
-      };
-    } else if (val === 'em andamento') {
-      return {
-        ...baseStyle,
-        background: 'rgba(255, 167, 38, 0.1)',
-        color: '#ffa726'
-      };
-    } else if (val === 'não') {
-      return {
-        ...baseStyle,
-        background: 'rgba(239, 83, 80, 0.1)',
-        color: '#ef5350'
-      };
-    } else if (val === 'enviando link') {
-      return {
-        ...baseStyle,
-        background: 'rgba(66, 165, 245, 0.1)',
-        color: '#42a5f5'
-      };
-    } else {
-      return {
-        ...baseStyle,
-        background: 'rgba(158, 158, 158, 0.15)',
-        color: '#9e9e9e'
-      };
-    }
-  };
-
-  const handleOpenContact = (contact) => {
+  function handleOpenContact(contact) {
     setEditingContact(contact);
     setFormData({
-      name: contact.name || '',
-      cpf: contact.cpf || '',
-      origin: contact.origin || '',
-      experiences_count: contact.experiences_count || 0,
-      phone: contact.phone || '',
-      status: contact.status || '',
-      last_interaction: contact.last_interaction || '',
-      avisar: contact.avisar || 'Sempre',
-      remedio: contact.remedio || 'não informado',
-      medications_list: contact.medications_list || [],
-      observations: contact.observations || ''
+      nickname: contact.nickname || contact.name || '',
+      nome_completo: contact.nome_completo || '',
     });
-
     const phoneVal = contact.phone || '';
-    let foundDdi = '+55';
-    let foundBody = phoneVal;
-
-    const sortedDdis = [...ddiOptions].sort((a, b) => b.code.length - a.code.length);
-    for (const opt of sortedDdis) {
-      if (phoneVal.startsWith(opt.code)) {
-        foundDdi = opt.code;
-        foundBody = phoneVal.slice(opt.code.length);
-        break;
-      }
+    let foundDdi = '+55', foundBody = phoneVal;
+    const sorted = [...ddiOptions].sort((a, b) => b.code.length - a.code.length);
+    for (const opt of sorted) {
+      if (phoneVal.startsWith(opt.code)) { foundDdi = opt.code; foundBody = phoneVal.slice(opt.code.length); break; }
     }
     setCountryCode(foundDdi);
     setPhoneBody(foundBody);
-    setIsFirstExperience(contact.experiences_count === 0);
-
-    if (contact.avisar === 'Sempre' || contact.avisar === 'Nunca') {
-      setAvisarOption(contact.avisar);
-    } else if (contact.avisar?.startsWith('A partir de ')) {
-      setAvisarOption('mes');
-      setSelectedMonth(contact.avisar.replace('A partir de ', ''));
-    } else {
-      setAvisarOption('Sempre');
-    }
-
     setIsModalOpen(true);
-  };
+  }
 
-  const openWhatsApp = (phone) => {
-    const cleanPhone = phone.replace(/\D/g, '');
-    window.open(`https://wa.me/${cleanPhone}`, '_blank');
-  };
+  async function handleDelete(contact) {
+    if (!confirm(`Excluir "${contact.nickname || contact.name}"? Esta ação não pode ser desfeita.`)) return;
+    const { error } = await supabase.from('contacts').delete().eq('id', contact.id);
+    if (error) { alert('Erro ao excluir: ' + error.message); }
+    else setContacts(prev => prev.filter(c => c.id !== contact.id));
+  }
 
-  const getStatusClass = (status) => {
-    const s = status?.toLowerCase().replace(' ', '-') || 'prospecto';
-    return `status-badge status-${s}`;
-  };
+  const openWhatsApp = (phone) => window.open(`https://wa.me/${phone.replace(/\D/g, '')}`, '_blank');
 
-  const filteredContacts = contacts.filter(contact =>
-    contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredContacts = contacts.filter(c =>
+    (c.nickname || c.name || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  if (!user) return <div style={{ textAlign: 'center', padding: '5rem' }}>Verificando acesso...</div>;
+  if (!user) return <div style={{ textAlign: 'center', padding: '5rem', fontFamily: "'Courier Prime', monospace", color: '#aaa49c' }}>Verificando acesso...</div>;
+
+  const s = {
+    page: { minHeight: '100vh', background: '#f7f4ee', fontFamily: "'Courier Prime', monospace", color: '#3a3530' },
+    nav: { position: 'sticky', top: 0, zIndex: 100, background: '#1a1714', padding: '0.75rem 2.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+    navBrand: { fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#f7f4ee', fontWeight: 400, textDecoration: 'none' },
+    navLink: { fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#b0a898', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '5px' },
+    navLinkActive: { color: '#f7f4ee', borderBottom: '0.5px solid #4a7a5a', paddingBottom: '2px' },
+    content: { padding: '2rem 2.5rem 4rem', maxWidth: '900px', margin: '0 auto' },
+    label: { fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c' },
+    fieldInput: { width: '100%', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', background: '#fdfbf7', border: '0.5px solid #c8c2b8', borderRadius: '2px', padding: '8px 10px', outline: 'none', boxSizing: 'border-box' },
+  };
 
   return (
-    <div>
-      {/* Barra de Navegação Premium Sticky no Topo */}
-      <nav className="navbar">
-        <a href="/" className="navbar-brand" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
-          Journey<span style={{ color: 'var(--accent)' }}>.</span>
-        </a>
-        <div className="navbar-menu">
-          <a href="/" className="navbar-link active">👥 Pessoas</a>
-          <a href="/events" className="navbar-link">🎪 Eventos</a>
-          <a href="/settings/statuses" className="navbar-link">⚙️ Status</a>
-          <button 
-            className="btn" 
-            style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: 'none', marginLeft: '1rem', padding: '0.4rem 0.8rem', cursor: 'pointer' }}
-            onClick={handleLogout}
-          >
-            Sair
-          </button>
+    <div style={s.page}>
+      <nav style={s.nav}>
+        <a href="/" style={s.navBrand}>Journey<span style={{ color: '#4a7a5a' }}>.</span></a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.8rem' }}>
+          <a href="/" style={{ ...s.navLink, ...s.navLinkActive }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="7" r="4"/><path d="M4 21v-1a8 8 0 0 1 16 0v1"/></svg> Pessoas
+          </a>
+          <a href="/events" style={s.navLink}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22V10"/><path d="M12 10C10 6 6 4 3 5c0 5 4 8 9 5Z"/><path d="M12 14c2-4 6-6 9-5c0 5-4 8-9 5Z"/></svg> Cerimônias
+          </a>
+          <a href="/settings/statuses" style={s.navLink}>◎ Status</a>
+          <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>sair</button>
         </div>
       </nav>
 
-      <div className="container fade-in" style={{ paddingTop: '2rem' }}>
-        <header style={{ borderBottom: 'none', marginBottom: '1.5rem', paddingBottom: 0 }}>
+      <div style={s.content}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', paddingBottom: '1.2rem', borderBottom: '0.5px solid #d0cbc2' }}>
           <div>
-            <h1 style={{ fontSize: '1.8rem', color: 'var(--primary)' }}>Base de Viajantes</h1>
-            <p style={{ color: 'var(--text-muted)' }}>Gerencie os contatos da sua rede</p>
+            <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: 0 }}>Pessoas</h1>
+            <div style={{ fontSize: '10px', color: '#aaa49c', letterSpacing: '0.08em', marginTop: '4px' }}>{contacts.length} contatos na base</div>
           </div>
-          <button className="btn btn-primary" onClick={() => setIsModalOpen(true)}>
-            + Novo Viajante
+          <button onClick={() => setIsModalOpen(true)} style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#f7f4ee', background: '#3a3530', border: 'none', borderRadius: '2px', padding: '8px 16px', cursor: 'pointer' }}>
+            + novo
           </button>
-        </header>
+        </div>
 
-        {/* Busca Rápida e Imediata */}
         <div style={{ marginBottom: '1.5rem' }}>
-          <input
-            type="text"
-            className="form-control"
-            placeholder="🔍 Buscar viajante por nome..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              padding: '0.75rem 1.2rem',
-              borderRadius: '12px',
-              fontSize: '0.95rem',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
-              border: '1px solid rgba(45, 74, 62, 0.15)'
-            }}
-          />
+          <input type="text" placeholder="buscar por nome..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} style={{ ...s.fieldInput, width: '280px' }} />
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem' }}>Carregando trilha...</div>
+          <div style={{ padding: '4rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.08em' }}>carregando...</div>
         ) : (
-          <>
-            <div className="contact-list-view">
-              {/* Header da Tabela Compacta */}
-              <div className="list-item" style={{ background: 'transparent', border: 'none', boxShadow: 'none', fontWeight: 'bold', color: 'var(--text-muted)' }}>
-                <div>Nome</div>
-                <div>Status</div>
-                <div>Exp.</div>
-                <div>Última Interação</div>
-                <div>Remédio</div>
-                <div>Avisar</div>
-                <div>Ações</div>
-              </div>
-              
-              {/* Linhas da Tabela */}
-              {filteredContacts.map((contact) => (
-                <div 
-                  key={contact.id} 
-                  className="list-item fade-in"
-                  style={{
-                    position: 'relative',
-                    zIndex: openRemedioId === contact.id ? 100 : 1
-                  }}
-                >
-                  <div style={{ fontWeight: '600' }}>{contact.name}</div>
-                  <div>
-                    {/* Seletor Interativo de Status com Atualização Imediata */}
-                    <select 
-                      value={contact.status || 'Prospecto'} 
-                      className={getStatusClass(contact.status)}
-                      onChange={(e) => handleStatusChange(contact.id, e.target.value)}
-                      style={{
-                        border: 'none',
-                        cursor: 'pointer',
-                        fontWeight: '600',
-                        outline: 'none',
-                        padding: '0.2rem 0.5rem',
-                        borderRadius: '20px',
-                        fontSize: '0.75rem',
-                        appearance: 'none',
-                        textAlign: 'center',
-                        display: 'inline-block'
-                      }}
-                    >
-                      {statuses.map(opt => (
-                        <option key={opt} value={opt} style={{ color: 'var(--text)', background: 'white' }}>{opt}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ paddingLeft: '0.5rem' }}>{contact.experiences_count}</div>
-                  <div>
-                    {contact.last_interaction 
-                      ? new Date(contact.last_interaction + 'T00:00:00').toLocaleDateString('pt-BR') 
-                      : '-'
-                    }
-                  </div>
-                  <div style={{ position: 'relative' }}>
-                    {/* Seletor Interativo Customizado de Remédio */}
-                    <button
-                      type="button"
-                      onClick={() => setOpenRemedioId(openRemedioId === contact.id ? null : contact.id)}
-                      style={{
-                        ...getRemedioStyle(contact.remedio),
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        fontSize: '1.1rem',
-                        border: '1px solid rgba(0,0,0,0.08)',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.06)',
-                        transition: 'all 0.2s ease',
-                        padding: 0
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'scale(1.12)';
-                        e.currentTarget.style.boxShadow = '0 4px 10px rgba(0,0,0,0.12)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'none';
-                        e.currentTarget.style.boxShadow = '0 2px 6px rgba(0,0,0,0.06)';
-                      }}
-                    >
-                      {getRemedioIcon(contact.remedio)}
-                    </button>
-                    
-                    {openRemedioId === contact.id && (
-                      <>
-                        {/* Overlay invisível para capturar o clique fora com zIndex altíssimo */}
-                        <div 
-                          onClick={() => setOpenRemedioId(null)} 
-                          style={{ position: 'fixed', inset: 0, zIndex: 9999 }} 
-                        />
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          marginTop: '0.5rem',
-                          background: '#ffffff',
-                          border: '1px solid rgba(45, 74, 62, 0.15)',
-                          borderRadius: '10px',
-                          boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                          zIndex: 10000,
-                          width: '160px',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          padding: '0.3rem'
-                        }}>
-                          {remedioOptions.map(opt => (
-                            <button
-                              key={opt.value}
-                              type="button"
-                              onClick={() => {
-                                handleRemedioChange(contact.id, opt.value);
-                                setOpenRemedioId(null);
-                              }}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                padding: '0.6rem 0.8rem',
-                                borderRadius: '6px',
-                                textAlign: 'left',
-                                fontSize: '0.85rem',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.6rem',
-                                color: '#2d4a3e', // Texto escuro de alto contraste garantido
-                                fontWeight: contact.remedio === opt.value ? '600' : 'normal',
-                                backgroundColor: contact.remedio === opt.value ? 'rgba(45, 74, 62, 0.08)' : 'transparent',
-                                transition: 'background 0.2s'
-                              }}
-                              onMouseEnter={(e) => {
-                                if (contact.remedio !== opt.value) {
-                                  e.currentTarget.style.backgroundColor = 'rgba(45, 74, 62, 0.04)';
-                                }
-                              }}
-                              onMouseLeave={(e) => {
-                                if (contact.remedio !== opt.value) {
-                                  e.currentTarget.style.backgroundColor = 'transparent';
-                                }
-                              }}
-                            >
-                              {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  <div>
-                    <select
-                      value={contact.avisar || 'Nunca'}
-                      onChange={(e) => handleAvisarChange(contact.id, e.target.value)}
-                      style={getAvisarStyle(contact.avisar)}
-                    >
-                      {getAvisarOptions().map(opt => (
-                        <option key={opt} value={opt} style={{ color: 'var(--text)', background: 'white' }}>{opt}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                    <button 
-                      className="btn" 
-                      style={{ 
-                        padding: '0.4rem 0.8rem', 
-                        fontSize: '0.8rem', 
-                        background: 'rgba(45, 74, 62, 0.1)', 
-                        color: 'var(--primary)',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer'
-                      }}
-                      onClick={() => handleOpenContact(contact)}
-                    >
-                      Abrir
-                    </button>
-                    {contact.phone && (
-                      <button 
-                        className="btn btn-whatsapp" 
-                        style={{ padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
-                        onClick={() => openWhatsApp(contact.phone)}
-                      >
-                        Zap
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: '1rem', padding: '0 0 0.6rem', borderBottom: '0.5px solid #3a3530' }}>
+              <div style={s.label}>participante</div>
+              <div style={{ ...s.label, textAlign: 'right' }}>ações</div>
             </div>
-            
-            {filteredContacts.length === 0 && (
-              <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
-                Nenhum contato encontrado.
-              </p>
-            )}
-          </>
-        )}
-      </div>
 
-      {isModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ marginBottom: '1.5rem', color: 'var(--primary)' }}>
-              {editingContact ? "Visualizar / Editar Viajante" : "Novo Viajante"}
-            </h2>
-            <form onSubmit={handleSubmit}>
-              
-              {/* Informações Obrigatórias */}
-              <div className="form-group">
-                <label style={{ fontWeight: '600' }}>
-                  Nome Completo <span style={{ color: '#ef5350' }}>*</span>
-                </label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  required 
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  placeholder="Ex: Thiago Chianca"
-                />
-              </div>
-
-              <div className="form-group">
-                <label style={{ fontWeight: '600' }}>CPF</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={formData.cpf || ''}
-                  onChange={(e) => {
-                    let value = e.target.value.replace(/\D/g, '');
-                    if (value.length > 11) value = value.slice(0, 11);
-                    
-                    if (value.length > 9) {
-                      value = `${value.slice(0, 3)}.${value.slice(3, 6)}.${value.slice(6, 9)}-${value.slice(9)}`;
-                    } else if (value.length > 6) {
-                      value = `${value.slice(0, 3)}.${value.slice(3, 6)}.${value.slice(6)}`;
-                    } else if (value.length > 3) {
-                      value = `${value.slice(0, 3)}.${value.slice(3)}`;
-                    }
-                    setFormData({...formData, cpf: value});
-                  }}
-                  placeholder="000.000.000-00"
-                />
-              </div>
-
-              <div className="form-group">
-                <label style={{ fontWeight: '600' }}>
-                  Telefone <span style={{ color: '#ef5350' }}>*</span>
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <select 
-                    className="form-control" 
-                    value={countryCode} 
-                    onChange={(e) => setCountryCode(e.target.value)}
-                    style={{ width: '130px', cursor: 'pointer' }}
-                  >
-                    {ddiOptions.map(opt => (
-                      <option key={opt.code} value={opt.code}>{opt.name} ({opt.code})</option>
-                    ))}
-                  </select>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    required 
-                    placeholder="DDD + Número (Ex: 11999999999)"
-                    value={phoneBody}
-                    onChange={(e) => setPhoneBody(e.target.value)}
-                    style={{ flex: 1 }}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label style={{ fontWeight: '600' }}>
-                  Avisar <span style={{ color: '#ef5350' }}>*</span>
-                </label>
-                <select 
-                  className="form-control"
-                  value={avisarOption}
-                  onChange={(e) => {
-                    const opt = e.target.value;
-                    setAvisarOption(opt);
-                    if (opt === 'Nunca' || opt === 'Sempre') {
-                      setFormData({...formData, avisar: opt});
-                    } else {
-                      const dynamicMonths = getNext12Months();
-                      setFormData({...formData, avisar: 'A partir de ' + (selectedMonth || dynamicMonths[0])});
-                    }
-                  }}
-                >
-                  <option value="Sempre">Sempre</option>
-                  <option value="Nunca">Nunca</option>
-                  <option value="mes">A partir do mês...</option>
-                </select>
-              </div>
-
-              {avisarOption === 'mes' && (
-                <div className="form-group fade-in">
-                  <label style={{ fontWeight: '600' }}>
-                    Selecione o mês/ano para avisar <span style={{ color: '#ef5350' }}>*</span>
-                  </label>
-                  <select
-                    className="form-control"
-                    value={selectedMonth}
-                    onChange={(e) => {
-                      const m = e.target.value;
-                      setSelectedMonth(m);
-                      setFormData({...formData, avisar: 'A partir de ' + m});
-                    }}
-                  >
-                    {getNext12Months().map(m => (
-                      <option key={m} value={m}>{m}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="form-group">
-                <label style={{ fontWeight: '600' }}>Remédio (Status Geral)</label>
-                <select 
-                  className="form-control"
-                  value={formData.remedio || 'não informado'}
-                  onChange={(e) => setFormData({...formData, remedio: e.target.value})}
-                  style={{ cursor: 'pointer' }}
-                >
-                  {remedioOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Lista Detalhada de Medicamentos com Inclusão Manual */}
-              <div style={{
-                marginTop: '1rem',
-                background: 'rgba(0,0,0,0.02)',
-                padding: '1rem',
-                borderRadius: '12px',
-                border: '1px solid rgba(0,0,0,0.05)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.8rem'
-              }}>
-                <label style={{ fontWeight: '600', display: 'block', fontSize: '0.9rem', color: 'var(--primary)', margin: 0 }}>
-                  Lista Detalhada de Remédios ({formData.medications_list?.length || 0})
-                </label>
-                
-                {formData.medications_list && formData.medications_list.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    {formData.medications_list.map((med, idx) => (
-                      <div 
-                        key={idx} 
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          background: 'white',
-                          padding: '0.5rem 0.8rem',
-                          borderRadius: '8px',
-                          border: '1px solid rgba(0,0,0,0.05)',
-                          fontSize: '0.8rem'
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                          <span style={{ fontWeight: '600', color: 'var(--text)' }}>💊 {med.name}</span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Dose: {med.dosage} | Freq: {med.frequency}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = formData.medications_list.filter((_, i) => i !== idx);
-                            setFormData({
-                              ...formData,
-                              medications_list: updated,
-                              remedio: updated.length === 0 ? 'não' : formData.remedio
-                            });
-                          }}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: '#ef5350',
-                            cursor: 'pointer',
-                            fontWeight: '600',
-                            fontSize: '0.75rem',
-                            padding: '0.2rem 0.4rem',
-                            borderRadius: '4px'
-                          }}
-                          onMouseEnter={(e) => e.target.style.background = 'rgba(239, 83, 80, 0.1)'}
-                          onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                        >
-                          Remover
-                        </button>
-                      </div>
-                    ))}
+            {filteredContacts.map((contact) => (
+              <div key={contact.id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: '1rem', padding: '0.85rem 0', borderBottom: '0.5px dashed #ddd9cf', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
+                    {contact.nickname || contact.name}
                   </div>
-                ) : (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0, fontStyle: 'italic' }}>
-                    Nenhum medicamento detalhado cadastrado.
-                  </p>
-                )}
-
-                {/* Sub-form para Adicionar Medicamento Manualmente */}
-                <div style={{
-                  borderTop: '1px solid rgba(0,0,0,0.06)',
-                  marginTop: '0.4rem',
-                  paddingTop: '0.6rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem'
-                }}>
-                  <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--primary)', display: 'block' }}>
-                    + Adicionar Remédio à Ficha
-                  </span>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '0.4rem' }}>
-                    <input 
-                      type="text"
-                      className="form-control"
-                      placeholder="Nome do remédio"
-                      value={adminMedName}
-                      onChange={(e) => setAdminMedName(e.target.value)}
-                      style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', height: '32px' }}
-                    />
-                    <input 
-                      type="text"
-                      className="form-control"
-                      placeholder="Dose (Ex: 50mg)"
-                      value={adminMedDosage}
-                      onChange={(e) => setAdminMedDosage(e.target.value)}
-                      style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', height: '32px' }}
-                    />
-                    <input 
-                      type="text"
-                      className="form-control"
-                      placeholder="Freq (Ex: 1x/dia)"
-                      value={adminMedFreq}
-                      onChange={(e) => setAdminMedFreq(e.target.value)}
-                      style={{ fontSize: '0.8rem', padding: '0.4rem 0.6rem', height: '32px' }}
-                    />
+                  <div style={{ fontSize: '10px', color: '#aaa49c', marginTop: '2px' }}>
+                    {contact.phone || 'sem telefone'}
+                    {contact.nome_completo ? ` · ${contact.nome_completo}` : ''}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!adminMedName.trim()) return;
-                      const newMed = {
-                        name: adminMedName.trim(),
-                        dosage: adminMedDosage.trim() || 'Não informada',
-                        frequency: adminMedFreq.trim() || 'Não informada'
-                      };
-                      const currentList = formData.medications_list || [];
-                      setFormData({
-                        ...formData,
-                        medications_list: [...currentList, newMed],
-                        remedio: 'em andamento' // Define automaticamente como "em andamento" para revisão
-                      });
-                      setAdminMedName('');
-                      setAdminMedDosage('');
-                      setAdminMedFreq('');
-                    }}
-                    style={{
-                      background: 'rgba(45, 74, 62, 0.1)',
-                      color: 'var(--primary)',
-                      border: '1px solid rgba(45, 74, 62, 0.2)',
-                      padding: '0.4rem',
-                      borderRadius: '6px',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseEnter={(e) => e.target.style.background = 'rgba(45, 74, 62, 0.18)'}
-                    onMouseLeave={(e) => e.target.style.background = 'rgba(45, 74, 62, 0.1)'}
-                  >
-                    Incluir na Ficha
+                </div>
+                <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  <button onClick={() => handleOpenContact(contact)} title="Editar" style={{ width: '26px', height: '26px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '0.5px dashed #b8b0a4', borderRadius: '2px', cursor: 'pointer', color: '#7a7268', padding: 0 }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  {contact.phone && (
+                    <button onClick={() => openWhatsApp(contact.phone)} title="WhatsApp" style={{ width: '26px', height: '26px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '0.5px dashed #b8b0a4', borderRadius: '2px', cursor: 'pointer', color: '#7a7268', padding: 0 }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.122 1.533 5.856L.057 23.885a.5.5 0 0 0 .615.612l6.152-1.612A11.956 11.956 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.848 0-3.576-.495-5.063-1.36l-.363-.215-3.754.985.999-3.647-.237-.377A9.958 9.958 0 0 1 2 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(contact)} title="Excluir" style={{ width: '26px', height: '26px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '0.5px dashed #c8a8a8', borderRadius: '2px', cursor: 'pointer', color: '#c8a8a8', padding: 0, fontSize: '13px', lineHeight: 1 }}>
+                    ✕
                   </button>
                 </div>
               </div>
+            ))}
 
-              {/* Caixa de Primeira Experiência (Obrigatória, Sim por padrão) */}
-              <div className="form-group" style={{ 
-                background: 'rgba(45, 74, 62, 0.05)', 
-                padding: '1rem', 
-                borderRadius: '12px', 
-                border: '1px solid rgba(45, 74, 62, 0.1)',
-                marginTop: '1.5rem'
-              }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', fontWeight: '600' }}>
-                  <input 
-                    type="checkbox" 
-                    checked={isFirstExperience} 
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setIsFirstExperience(checked);
-                      // Se desmarcou e estava 0, vira 1 automaticamente
-                      if (!checked && (formData.experiences_count === 0 || formData.experiences_count === '0' || !formData.experiences_count)) {
-                        setFormData({...formData, experiences_count: 1});
-                      }
-                    }}
-                    style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                  />
-                  <span>Primeira experiência com enteógenos?</span>
-                </label>
+            {filteredContacts.length === 0 && (
+              <div style={{ padding: '3rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.06em' }}>nenhum contato encontrado.</div>
+            )}
+          </div>
+        )}
+      </div>
 
-                {!isFirstExperience && (
-                  <div className="fade-in" style={{ marginTop: '1rem' }}>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', fontWeight: '500' }}>
-                      Quantas experiências anteriores a pessoa possui? <span style={{ color: '#ef5350' }}>*</span>
-                    </label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      className="form-control" 
-                      value={formData.experiences_count}
-                      onChange={(e) => setFormData({...formData, experiences_count: e.target.value})}
-                      placeholder="Ex: 3"
-                      required={!isFirstExperience}
-                    />
+      {/* Modal de cadastro / edição */}
+      {isModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div style={{ background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', width: '100%', maxWidth: '420px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
+
+            <div style={{ padding: '1.5rem 2rem 1rem', borderBottom: '0.5px solid #d0cbc2', flexShrink: 0 }}>
+              <h2 style={{ fontFamily: "'IM Fell English', serif", fontSize: '24px', fontWeight: 400, color: '#3a3530', margin: 0 }}>
+                {editingContact ? (editingContact.nickname || editingContact.name) : 'Novo contato'}
+              </h2>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1, padding: '1.5rem 2rem' }}>
+              <form onSubmit={handleSubmit} id="contact-form">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label style={s.label}>Nome *</label>
+                    <input type="text" required value={formData.nickname} onChange={e => setFormData({ ...formData, nickname: e.target.value })} style={{ ...s.fieldInput, marginTop: '5px' }} />
                   </div>
-                )}
-              </div>
-
-              {/* Seção de Campos Opcionais */}
-              <div style={{ borderTop: '1px dashed rgba(0,0,0,0.15)', marginTop: '2rem', paddingTop: '1.5rem' }}>
-                <h4 style={{ fontSize: '0.85rem', color: 'var(--primary)', marginBottom: '1.2rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  Campos Opcionais
-                </h4>
-                
-                <div className="form-group">
-                  <label>Quem indicou</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    value={formData.origin}
-                    onChange={(e) => setFormData({...formData, origin: e.target.value})}
-                    placeholder="Ex: Amigo X, Instagram"
-                  />
+                  <div>
+                    <label style={s.label}>Nome Completo</label>
+                    <input type="text" value={formData.nome_completo} onChange={e => setFormData({ ...formData, nome_completo: e.target.value })} style={{ ...s.fieldInput, marginTop: '5px' }} />
+                  </div>
+                  <div>
+                    <label style={s.label}>Telefone (WhatsApp)</label>
+                    <div style={{ display: 'flex', gap: '6px', marginTop: '5px' }}>
+                      <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...s.fieldInput, width: '130px', cursor: 'pointer' }}>
+                        {ddiOptions.map(opt => <option key={opt.code} value={opt.code}>{opt.name} ({opt.code})</option>)}
+                      </select>
+                      <input type="text" placeholder="DDD + número" value={phoneBody} onChange={e => setPhoneBody(e.target.value)} style={{ ...s.fieldInput, flex: 1 }} />
+                    </div>
+                  </div>
                 </div>
+              </form>
 
-                <div className="form-group">
-                  <label>Observações</label>
-                  <textarea 
-                    className="form-control" 
-                    rows="3"
-                    value={formData.observations}
-                    onChange={(e) => setFormData({...formData, observations: e.target.value})}
-                    placeholder="Histórico, cuidados médicos, detalhes importantes..."
-                  ></textarea>
+              {/* Histórico de Fichas Médicas */}
+              {editingContact && (
+                <div style={{ marginTop: '1.8rem', paddingTop: '1.4rem', borderTop: '0.5px dashed #d0cbc2' }}>
+                  <div style={{ ...s.label, marginBottom: '0.8rem' }}>fichas médicas</div>
+                  {medicalRecords.length === 0 ? (
+                    <div style={{ fontSize: '11px', color: '#b0a898', fontStyle: 'italic' }}>nenhuma ficha preenchida ainda.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {medicalRecords.map((rec) => {
+                        const meds = rec.medications_list || [];
+                        const complete = rec.medical_form_step >= 6;
+                        const hasDuvidas = rec.medical_form_data?.sec6_duvidas;
+                        const hasAtencao = rec.medical_form_data?.sec2_leitura_nao_li || rec.medical_form_data?.sec3_historico_obs || rec.medical_form_data?.sec5_experiencias_recentes;
+                        return (
+                          <div key={rec.id} style={{ padding: '0.7rem 0.9rem', background: '#f7f4ee', border: `0.5px solid ${complete ? '#a8c8b0' : '#d0cbc2'}`, borderRadius: '2px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#3a3530', fontWeight: 'bold' }}>
+                                {new Date(rec.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                              </span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '10px', color: complete ? '#4a7a5a' : '#8a7a58' }}>
+                                  {complete ? '✓ completa' : `incompleta · passo ${rec.medical_form_step || 0}`}
+                                </span>
+                                {complete && (
+                                  <button
+                                    type="button"
+                                    onClick={() => exportMedicalRecordPDF(rec, editingContact)}
+                                    style={{ background: 'none', border: '0.5px dashed #b8b0a4', borderRadius: '2px', padding: '2px 7px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', color: '#7a7268' }}
+                                  >
+                                    PDF
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#7a7268', marginTop: '4px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                              {meds.length > 0
+                                ? <span>💊 {meds.map(m => m.name).join(', ')}</span>
+                                : <span>sem remédios</span>}
+                              {hasDuvidas && <span style={{ color: '#c0392b' }}>⚠ dúvidas</span>}
+                              {hasAtencao && <span style={{ color: '#d35400' }}>! atenção</span>}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+            </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '2.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1, justifyContent: 'center' }}>Salvar Viajante</button>
-                <button 
-                  type="button" 
-                  className="btn" 
-                  style={{ background: '#eee', justifyContent: 'center' }}
-                  onClick={() => setIsModalOpen(false)}
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
+            <div style={{ padding: '1rem 2rem 1.5rem', borderTop: '0.5px solid #d0cbc2', flexShrink: 0, display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#8a8278', background: 'transparent', border: '0.5px dashed #c8c2b8', borderRadius: '2px', padding: '8px 16px', cursor: 'pointer' }}>cancelar</button>
+              <button type="submit" form="contact-form" style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#f7f4ee', background: '#3a3530', border: 'none', borderRadius: '2px', padding: '8px 20px', cursor: 'pointer' }}>salvar</button>
+            </div>
           </div>
         </div>
       )}

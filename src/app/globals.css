@@ -1,23 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
   --primary: #2d4a3e; /* Deep Forest Green */
-  --primary-light: #4a6d5f;
+  --primary-light: #4c6f60;
   --accent: #d4af37; /* Muted Gold */
-  --bg: #f8f9f5; /* Off-white / Eggshell */
-  --text: #1a1a1a;
-  --text-muted: #666;
-  --card-bg: rgba(255, 255, 255, 0.8);
-  --glass-border: rgba(255, 255, 255, 0.3);
-  --shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-  --radius: 16px;
+  --bg: #f5f3ef; /* Warm Beige / Linen page background */
+  --card-bg: #fdfbf7; /* Ivory paper container background */
+  --text: #2d4a3e; /* Forest Green text for high premium style */
+  --text-dark: #1a1a1a;
+  --text-muted: #8b7e66; /* Muted earth tone */
+  --glass-border: #d4cbb8; /* Linen border color */
+  --shadow: 0 4px 20px rgba(45, 74, 62, 0.04);
+  --radius: 12px;
 }
 
 [data-theme='dark'] {
-  --bg: #121412;
-  --text: #f0f0f0;
-  --card-bg: rgba(30, 35, 30, 0.8);
-  --text-muted: #aaa;
+  --bg: #1e2824;
+  --text: #faf7f2;
+  --text-dark: #ffffff;
+  --card-bg: #17201c;
+  --text-muted: #a69c89;
+  --glass-border: #3b4e47;
 }
 
 * {
@@ -29,11 +32,18 @@
 body {
   font-family: 'Outfit', sans-serif;
   background-color: var(--bg);
-  color: var(--text);
+  color: var(--text-dark);
   line-height: 1.6;
   transition: background-color 0.3s ease;
   min-height: 100vh;
 }
+
+h1, h2, h3, h4, .serif-title {
+  font-family: 'Lora', Georgia, serif;
+  color: var(--primary);
+  font-weight: 500;
+}
+
 
 .container {
   max-width: 1000px;
@@ -322,18 +332,47 @@ header h1 {
 
 /* Status Badges */
 .status-badge {
-  padding: 0.2rem 0.6rem;
+  padding: 0.3rem 0.8rem;
   border-radius: 20px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   text-align: center;
   width: fit-content;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
 }
 
-.status-prospecto { background: #e3f2fd; color: #1976d2; }
-.status-agendado { background: #fff3e0; color: #f57c00; }
-.status-concluido { background: #e8f5e9; color: #388e3c; }
-.status-acompanhamento { background: #f3e5f5; color: #7b1fa2; }
+.status-prospecto, .status-avisar { 
+  background: #f5f3ef; 
+  color: #8b7e66; 
+  border-color: #d4cbb8; 
+}
+.status-agendado, .status-acompanhamento, .status-intenção-de-ir { 
+  background: #fdf7e7; 
+  color: #b7950b; 
+  border-color: #f7e3b8; 
+}
+.status-confirmado, .status-concluido, .status-ok, .status-ok-manual { 
+  background: #eef6f3; 
+  color: #2d4a3e; 
+  border-color: #c9e2d8; 
+}
+.status-desistiu, .status-não { 
+  background: #fdf2f2; 
+  color: #c0392b; 
+  border-color: #fadbd8; 
+}
+.status-avisado, .status-enviado, .status-enviando-link { 
+  background: #edf4f9; 
+  color: #2980b9; 
+  border-color: #d4e6f1; 
+}
+.status-pendente, .status-não-informado {
+  background: #f5f5f5;
+  color: #7f8c8d;
+  border-color: #e5e5e5;
+}
 .fade-in {
   animation: fadeIn 0.6s ease forwards;
 }

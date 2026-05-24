@@ -31,7 +31,8 @@ create table if not exists events (
   name text not null,
   date date,
   date2 date,
-  description text
+  description text,
+  image_url text
 );
 
 -- 4. Tabela de Relacionamento (Participantes do Evento)
@@ -71,7 +72,7 @@ drop policy if exists "Allow all actions for authenticated users on event_partic
 create policy "Allow all actions for authenticated users on event_participants"
 on event_participants for all to authenticated using (true) with check (true);
 
--- 7. Criação das políticas para acesso público anônimo (Necessário para a Ficha Médica Pública funcionar sem login)
+-- 7. Criação das políticas para acesso público anônimo (Ficha Médica e Registro de Interesse)
 drop policy if exists "Allow public read contacts" on contacts;
 create policy "Allow public read contacts"
 on contacts for select to anon using (true);
@@ -83,3 +84,44 @@ on contacts for update to anon using (true) with check (true);
 drop policy if exists "Allow public insert contacts" on contacts;
 create policy "Allow public insert contacts"
 on contacts for insert to anon with check (true);
+
+drop policy if exists "Allow public read events" on events;
+create policy "Allow public read events"
+on events for select to anon using (true);
+
+drop policy if exists "Allow public insert event_participants" on event_participants;
+create policy "Allow public insert event_participants"
+on event_participants for insert to anon with check (true);
+
+drop policy if exists "Allow public read event_participants" on event_participants;
+create policy "Allow public read event_participants"
+on event_participants for select to anon using (true);
+
+
+-- 8. Configuração de Storage (Bucket "event-images" público)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('event-images', 'event-images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Políticas de acesso público para o Bucket "event-images"
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+CREATE POLICY "Public Access" ON storage.objects
+  FOR SELECT TO public
+  USING (bucket_id = 'event-images');
+
+DROP POLICY IF EXISTS "Allow public uploads" ON storage.objects;
+CREATE POLICY "Allow public uploads" ON storage.objects
+  FOR INSERT TO public
+  WITH CHECK (bucket_id = 'event-images');
+
+DROP POLICY IF EXISTS "Allow public updates" ON storage.objects;
+CREATE POLICY "Allow public updates" ON storage.objects
+  FOR UPDATE TO public
+  USING (bucket_id = 'event-images')
+  WITH CHECK (bucket_id = 'event-images');
+
+DROP POLICY IF EXISTS "Allow public deletes" ON storage.objects;
+CREATE POLICY "Allow public deletes" ON storage.objects
+  FOR DELETE TO public
+  USING (bucket_id = 'event-images');
+

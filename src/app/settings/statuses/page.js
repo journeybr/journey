@@ -16,6 +16,8 @@ export default function StatusSettings() {
 
   async function fetchStatuses() {
     setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { router.push('/login'); return; }
     const { data, error } = await supabase
       .from('statuses')
       .select('*')
