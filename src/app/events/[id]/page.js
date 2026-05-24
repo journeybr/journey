@@ -1360,15 +1360,21 @@ export default function EventDetail({ params }) {
             <h1 style={s.title}>{event.name}</h1>
             {isMobile ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <div style={{ fontSize: '10px', color: '#aaa49c', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>
-                    D1: {day1Stats.total} | reservado: {day1Stats.reservados} | confirmado: {day1Stats.confirmados}
-                  </div>
-                  {event.date2 && (
-                    <div style={{ fontSize: '10px', color: '#aaa49c', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>
-                      D2: {day2Stats.total} | reservado: {day2Stats.reservados} | confirmado: {day2Stats.confirmados}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : [])].map(({ label, stats }) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
+                      <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
+                      <span style={{ color: '#d0c8c0' }}>—</span>
+                      <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.total}</span>
+                      <span style={{ color: '#b8b0a8' }}>total</span>
+                      <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
+                      <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.reservados}</span>
+                      <span style={{ color: '#b8b0a8' }}>reservado</span>
+                      <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
+                      <span style={{ color: stats.confirmados > 0 ? '#3d6b52' : '#5a5048', fontWeight: 'bold' }}>{stats.confirmados}</span>
+                      <span style={{ color: '#b8b0a8' }}>confirmado</span>
                     </div>
-                  )}
+                  ))}
                 </div>
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexShrink: 0, marginLeft: '0.75rem' }}>
                   {[
@@ -1384,15 +1390,21 @@ export default function EventDetail({ params }) {
                 </div>
               </div>
             ) : (
-              <div style={{ ...s.datesRow, flexDirection: 'column', gap: '0.25rem', marginTop: '0.3rem' }}>
-                <div style={{ fontSize: '10px', color: '#aaa49c', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>
-                  D1: {day1Stats.total} | reservado: {day1Stats.reservados} | confirmado: {day1Stats.confirmados}
-                </div>
-                {event.date2 && (
-                  <div style={{ fontSize: '10px', color: '#aaa49c', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>
-                    D2: {day2Stats.total} | reservado: {day2Stats.reservados} | confirmado: {day2Stats.confirmados}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '0.4rem' }}>
+                {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : [])].map(({ label, stats }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
+                    <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
+                    <span style={{ color: '#d0c8c0' }}>—</span>
+                    <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.total}</span>
+                    <span style={{ color: '#b8b0a8' }}>total</span>
+                    <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
+                    <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.reservados}</span>
+                    <span style={{ color: '#b8b0a8' }}>reservado</span>
+                    <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
+                    <span style={{ color: stats.confirmados > 0 ? '#3d6b52' : '#5a5048', fontWeight: 'bold' }}>{stats.confirmados}</span>
+                    <span style={{ color: '#b8b0a8' }}>confirmado</span>
                   </div>
-                )}
+                ))}
               </div>
             )}
           </div>
