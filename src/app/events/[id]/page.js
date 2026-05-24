@@ -996,7 +996,8 @@ export default function EventDetail({ params }) {
         const cleanNew = fullPhone.replace(/\D/g, '');
         const dup = allContacts.find(c => c.phone?.replace(/\D/g, '') === cleanNew);
         if (dup) {
-          if (!confirm(`O número ${fullPhone} já está cadastrado para "${dup.nickname || dup.name}". Criar mesmo assim?`)) return;
+          alert(`Este número já está cadastrado para "${dup.nickname || dup.name}".`);
+          return;
         }
       }
       const { data: newContact, error: cErr } = await supabase

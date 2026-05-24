@@ -323,7 +323,7 @@ export default function Home() {
                       <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...s.fieldInput, width: '130px', cursor: 'pointer' }}>
                         {ddiOptions.map(opt => <option key={opt.code} value={opt.code}>{opt.name} ({opt.code})</option>)}
                       </select>
-                      <input type="text" placeholder="DDD + número" value={phoneBody} onChange={e => setPhoneBody(e.target.value)} style={{ ...s.fieldInput, flex: 1 }} />
+                      <input type="tel" placeholder="DDD + número" value={phoneBody} onChange={e => setPhoneBody(e.target.value.replace(/[^\d]/g, ''))} style={{ ...s.fieldInput, flex: 1 }} />
                     </div>
                   </div>
                 </div>
