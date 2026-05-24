@@ -320,8 +320,19 @@ export default function Home() {
                   <div>
                     <label style={s.label}>Telefone (WhatsApp)</label>
                     <div style={{ display: 'flex', gap: '6px', marginTop: '5px' }}>
-                      <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...s.fieldInput, width: '130px', cursor: 'pointer' }}>
-                        {ddiOptions.map(opt => <option key={opt.code} value={opt.code}>{opt.name} ({opt.code})</option>)}
+                      <select value={countryCode} onChange={e => setCountryCode(e.target.value)} style={{ ...s.fieldInput, width: '96px', cursor: 'pointer' }}>
+                        <option value="+55">🇧🇷 +55</option>
+                        <option value="+1">🇺🇸 +1</option>
+                        <option value="+351">🇵🇹 +351</option>
+                        <option value="+54">🇦🇷 +54</option>
+                        <option value="+57">🇨🇴 +57</option>
+                        <option value="+52">🇲🇽 +52</option>
+                        <option value="+56">🇨🇱 +56</option>
+                        <option value="+34">🇪🇸 +34</option>
+                        <option value="+39">🇮🇹 +39</option>
+                        <option value="+44">🇬🇧 +44</option>
+                        <option value="+49">🇩🇪 +49</option>
+                        <option value="+33">🇫🇷 +33</option>
                       </select>
                       <input type="tel" placeholder="DDD + número" value={phoneBody} onChange={e => setPhoneBody(e.target.value.replace(/[^\d]/g, ''))} style={{ ...s.fieldInput, flex: 1 }} />
                     </div>
