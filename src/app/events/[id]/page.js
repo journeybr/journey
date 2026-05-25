@@ -64,14 +64,14 @@ const PinIcon = ({ active }) => active ? (
   </svg>
 );
 
-const PillIcon = ({ status = 'pending' }) => {
+const PillIcon = ({ status = 'pending', size = 22 }) => {
   const isOk = status === 'ok';
   const isAttn = status === 'attention';
   const fill = isOk ? '#5d9470' : isAttn ? '#c0392b' : 'none';
   const stroke = (!isOk && !isAttn) ? '#c8c2b8' : 'none';
   const lineColor = (!isOk && !isAttn) ? '#c8c2b8' : 'rgba(255,255,255,0.5)';
   return (
-    <svg width="22" height="22" viewBox="0 0 16 16" style={{ display: 'block', flexShrink: 0 }}>
+    <svg width={size} height={size} viewBox="0 0 16 16" style={{ display: 'block', flexShrink: 0 }}>
       <g transform="rotate(-38 8 8)">
         <rect x="1.5" y="5.5" width="13" height="5" rx="2.5" fill={fill} stroke={stroke} strokeWidth="0.9"/>
         <line x1="8" y1="5.5" x2="8" y2="10.5" stroke={lineColor} strokeWidth="0.7"/>
@@ -1048,7 +1048,7 @@ export default function EventDetail({ params }) {
 
   const confirmados = participants.filter(p => p.status === 'Confirmado');
   const intencao = participants.filter(p => p.status === 'intenção de ir');
-  const iniciais = participants.filter(p => p.status === 'avisado' || p.status === 'desistiu' || p.status === 'avisar');
+  const iniciais = participants.filter(p => p.status === 'desistiu');
 
   const activeParticipants = [...confirmados, ...intencao];
   const day1Active = activeParticipants.filter(p => p.date1_confirmed);
@@ -1392,7 +1392,7 @@ export default function EventDetail({ params }) {
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexShrink: 0, marginLeft: '0.75rem' }}>
                   {[
                     { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' }), icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
-                    { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> },
+                    { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={13} /> },
                     { title: 'Copiar link de interesse', onClick: () => { const link = `${window.location.origin}/interesse/${event.id}`; const text = event.invite_message ? `${event.invite_message}\n\n${link}` : link; navigator.clipboard.writeText(text); alert('Link de interesse copiado!'); }, icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                     { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
                   ].map((btn, i) => (
@@ -1426,7 +1426,7 @@ export default function EventDetail({ params }) {
             <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flexShrink: 0 }}>
               {[
                 { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' }), icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
-                { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> },
+                { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={14} /> },
                 { title: 'Copiar link de interesse', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/interesse/${event.id}`); alert('Link de interesse copiado!'); }, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                 { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
               ].map((btn, i) => (
@@ -1442,7 +1442,7 @@ export default function EventDetail({ params }) {
         {hasTwoDates && participants.length > 0 && (
           <div style={{ display: 'flex', gap: '6px', marginTop: isMobile ? '1.4rem' : '0rem', marginBottom: '1.8rem', alignItems: 'center' }}>
             <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginRight: '4px' }}>filtrar:</span>
-            {[{ val: 'both', label: 'D1+D2' }, { val: 'day1', label: 'D1' }, { val: 'day2', label: 'D2' }].map(f => (
+            {[{ val: 'both', label: 'D1+D2' }, { val: 'day1', label: 'D1' }, { val: 'day2', label: 'D2' }, { val: 'none', label: 'nenhum' }].map(f => (
               <button key={f.val} onClick={() => setDayFilter(dayFilter === f.val ? null : f.val)} style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 9px', borderRadius: '2px', cursor: 'pointer', border: dayFilter === f.val ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', background: dayFilter === f.val ? '#3a3530' : 'transparent', color: dayFilter === f.val ? '#f7f4ee' : '#9a9288', transition: 'all 0.15s' }}>
                 {f.label}
               </button>
@@ -1463,7 +1463,7 @@ export default function EventDetail({ params }) {
             {/* GRUPO 1: VIAJANTES ATIVOS */}
             {(() => {
               const allActive = [...confirmados, ...intencao];
-              const applyDayFilter = p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : true;
+              const applyDayFilter = p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : dayFilter === 'none' ? (!p.date1_confirmed && !p.date2_confirmed) : true;
               const filteredActive = allActive.filter(applyDayFilter).sort((a, b) => (a.contacts?.name || '').localeCompare(b.contacts?.name || ''));
               return (
             <div>
@@ -1498,19 +1498,19 @@ export default function EventDetail({ params }) {
               );
             })()}
 
-            {/* GRUPO 2: CONTATOS INICIAIS & DESISTENTES */}
+            {/* GRUPO 2: DESISTENTES */}
             <div style={{ marginTop: '2rem' }}>
               <div style={s.sectionHeader}>
                 <div style={s.sectionTitle}>
-                  📱 Contatos Iniciais & Desistentes ({iniciais.length})
+                  ✕ Desistentes ({iniciais.length})
                 </div>
               </div>
 
               {iniciais.length === 0 ? (
-                <div style={s.emptyNote}>Nenhum contato inicial ou desistente nesta cerimônia.</div>
+                <div style={s.emptyNote}>Nenhum desistente nesta cerimônia.</div>
               ) : (() => {
                 const filtered = [...iniciais]
-                  .filter(p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : true)
+                  .filter(p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : dayFilter === 'none' ? (!p.date1_confirmed && !p.date2_confirmed) : true)
                   .sort((a, b) => (a.contacts?.name || '').localeCompare(b.contacts?.name || ''));
                 if (filtered.length === 0) return <div style={s.emptyNote}>Nenhum contato para este dia.</div>;
                 return isMobile ? (
