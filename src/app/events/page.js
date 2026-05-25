@@ -82,6 +82,7 @@ const s = {
     padding: '2.5rem 2.5rem 4rem 4.5rem',
     maxWidth: '1100px',
     margin: '0 auto',
+    boxSizing: 'border-box',
   },
   pageTitle: {
     fontFamily: "'IM Fell English', serif",
@@ -113,6 +114,8 @@ const s = {
     display: 'inline-flex',
     alignItems: 'center',
     gap: '6px',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   },
   cardActionBtn: {
     background: 'none',
@@ -283,7 +286,15 @@ export default function Events() {
   const [editFormData, setEditFormData] = useState(emptyForm);
   const [inactiveEvents, setInactiveEvents] = useState([]);
   const [showInactive, setShowInactive] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 720);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => { checkUser(); }, []);
 
@@ -391,11 +402,11 @@ export default function Events() {
       </nav>
 
       {/* Content */}
-      <div style={s.content}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '0.4rem' }}>
+      <div style={{ ...s.content, padding: isMobile ? '1.5rem 1.2rem 3rem' : '2.5rem 2.5rem 4rem 4.5rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobile ? 'center' : 'flex-end', marginBottom: '0.4rem', gap: '1rem' }}>
           <div>
-            <h1 style={s.pageTitle}>Cerimônias</h1>
-            <p style={s.pageSubtitle}>diários dos encontros · jornadas registradas</p>
+            <h1 style={{ ...s.pageTitle, fontSize: isMobile ? '2.8rem' : '3.5rem' }}>Cerimônias</h1>
+            {!isMobile && <p style={s.pageSubtitle}>diários dos encontros · jornadas registradas</p>}
           </div>
           <button onClick={() => setIsModalOpen(true)} style={s.addBtn}>
             + nova cerimônia
