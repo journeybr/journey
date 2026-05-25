@@ -232,7 +232,7 @@ export default function Home() {
           <a href="/events" style={s.navLink}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22V10"/><path d="M12 10C10 6 6 4 3 5c0 5 4 8 9 5Z"/><path d="M12 14c2-4 6-6 9-5c0 5-4 8-9 5Z"/></svg> Cerimônias
           </a>
-          <a href="/settings/statuses" style={s.navLink}>◎ Status</a>
+
           <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>sair</button>
         </div>
       </nav>

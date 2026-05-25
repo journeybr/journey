@@ -383,9 +383,7 @@ export default function Events() {
           <a href="/events" style={{ ...s.navLink, ...s.navLinkActive }}>
             <PlantIcon /> Cerimônias
           </a>
-          <a href="/settings/statuses" style={s.navLink}>
-            ⚙ Status
-          </a>
+
           <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>
             sair
           </button>

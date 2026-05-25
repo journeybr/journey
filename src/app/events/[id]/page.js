@@ -1241,7 +1241,7 @@ export default function EventDetail({ params }) {
           </div>
         ) : <span style={{ color: '#c0b8b0' }}>—</span>}
 
-        {/* Ações: WhatsApp + Remover */}
+        {/* Ações: WhatsApp + Remover (remover só em desistentes) */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
           <span
             title="Abrir chat no WhatsApp"
@@ -1252,13 +1252,15 @@ export default function EventDetail({ params }) {
           >
             <WaIcon />
           </span>
-          <button
-            style={s.removeBtn}
-            onClick={() => removeParticipant(p.contact_id)}
-            title="Remover viajante"
-          >
-            ✕
-          </button>
+          {isSimplified && (
+            <button
+              style={s.removeBtn}
+              onClick={() => removeParticipant(p.contact_id)}
+              title="Remover viajante"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
     );
@@ -1299,7 +1301,6 @@ export default function EventDetail({ params }) {
                 <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
               </span>
             )}
-            <span onClick={() => { const ph = p.contacts?.phone?.replace(/\D/g, ''); if (ph) window.open(`https://wa.me/${ph}`, '_blank'); }} style={{ cursor: 'pointer', color: '#8a8278', opacity: 0.5, display: 'inline-flex', alignItems: 'center' }}><WaIcon /></span>
             {(() => {
               const ps = p.payment_status || 'em aberto';
               return (
@@ -1342,6 +1343,7 @@ export default function EventDetail({ params }) {
             >
               <PinIcon active={p.endereco_enviado} />
             </span>
+            <span onClick={() => { const ph = p.contacts?.phone?.replace(/\D/g, ''); if (ph) window.open(`https://wa.me/${ph}`, '_blank'); }} style={{ cursor: 'pointer', color: '#8a8278', opacity: 0.5, display: 'inline-flex', alignItems: 'center' }}><WaIcon /></span>
           </div>
         </div>
       </div>
@@ -1356,7 +1358,6 @@ export default function EventDetail({ params }) {
         <div style={{ ...s.navLinks, gap: isMobile ? '1rem' : '1.8rem' }}>
           {!isMobile && <a href="/" style={s.navLink}><PersonIcon /> Pessoas</a>}
           <a href="/events" style={{ ...s.navLink, ...s.navLinkActive }}>{isMobile ? <PlantIcon /> : <><PlantIcon /> Cerimônias</>}</a>
-          {!isMobile && <a href="/settings/statuses" style={s.navLink}>◎ Status</a>}
           <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>sair</button>
         </div>
       </nav>
