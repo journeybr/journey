@@ -64,12 +64,12 @@ const PinIcon = ({ active }) => active ? (
   </svg>
 );
 
-const PillIcon = ({ status = 'pending', size = 22 }) => {
+const PillIcon = ({ status = 'pending', size = 22, strokeColor }) => {
   const isOk = status === 'ok';
   const isAttn = status === 'attention';
   const fill = isOk ? '#5d9470' : isAttn ? '#c0392b' : 'none';
-  const stroke = (!isOk && !isAttn) ? '#c8c2b8' : 'none';
-  const lineColor = (!isOk && !isAttn) ? '#c8c2b8' : 'rgba(255,255,255,0.5)';
+  const stroke = (!isOk && !isAttn) ? (strokeColor || '#c8c2b8') : 'none';
+  const lineColor = (!isOk && !isAttn) ? (strokeColor || '#c8c2b8') : 'rgba(255,255,255,0.5)';
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" style={{ display: 'block', flexShrink: 0 }}>
       <g transform="rotate(-38 8 8)">
@@ -1392,7 +1392,7 @@ export default function EventDetail({ params }) {
                 <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexShrink: 0, marginLeft: '0.75rem' }}>
                   {[
                     { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' }), icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
-                    { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={13} /> },
+                    { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={13} strokeColor="currentColor" /> },
                     { title: 'Copiar link de interesse', onClick: () => { const link = `${window.location.origin}/interesse/${event.id}`; const text = event.invite_message ? `${event.invite_message}\n\n${link}` : link; navigator.clipboard.writeText(text); alert('Link de interesse copiado!'); }, icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                     { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
                   ].map((btn, i) => (
@@ -1426,7 +1426,7 @@ export default function EventDetail({ params }) {
             <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start', flexShrink: 0 }}>
               {[
                 { title: 'Adicionar participante', onClick: () => setContactEditModal({ contactId: null, addingToEvent: true, nickname: '', nome_completo: '', ddi: '+55', phone: '' }), icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg> },
-                { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={14} /> },
+                { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={14} strokeColor="currentColor" /> },
                 { title: 'Copiar link de interesse', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/interesse/${event.id}`); alert('Link de interesse copiado!'); }, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                 { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
               ].map((btn, i) => (
