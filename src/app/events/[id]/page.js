@@ -2651,7 +2651,7 @@ export default function EventDetail({ params }) {
                 <input
                   type="text"
                   value={contactEditModal.nickname}
-                  onChange={e => setContactEditModal(prev => ({ ...prev, nickname: e.target.value, contactId: null }))}
+                  onChange={e => setContactEditModal(prev => ({ ...prev, nickname: e.target.value, contactId: prev.addingToEvent ? null : prev.contactId }))}
                   style={{ width: '100%', padding: '7px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
                 />
                 {!contactEditModal.contactId && contactEditModal.nickname.length >= 2 && (() => {
