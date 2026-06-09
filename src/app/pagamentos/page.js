@@ -927,6 +927,13 @@ export default function PagamentosPage() {
                 <div key={i} style={{ padding: '0.5rem 0', borderBottom: '0.5px dashed #d0cbc2' }}>
                   <div style={{ fontSize: '10px', color: '#3a3530', lineHeight: 1.5 }}>
                     {entry.by && <span style={{ fontWeight: 600 }}>{entry.by} </span>}{entry.msg}
+                    {entry.url && (
+                      <a href={entry.url} target="_blank" rel="noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{ display: 'inline-block', marginLeft: '6px', color: '#5d9470', fontSize: '9px', letterSpacing: '0.04em', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
+                        📎 ver comprovante
+                      </a>
+                    )}
                   </div>
                   <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{fmtLog(entry).split(' — ')[0]}</div>
                 </div>

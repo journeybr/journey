@@ -2595,6 +2595,13 @@ export default function EventDetail({ params }) {
                     <div style={{ fontSize: '11px', color: '#3a3530' }}>
                       <span style={{ fontWeight: 600 }}>{entry.by}</span> {entry.msg}
                       {entry._type && <span style={{ marginLeft: '6px', fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase', color: entry._type === 'pagamento' ? '#7a68a4' : '#5d9470', background: entry._type === 'pagamento' ? '#f0eef8' : '#eef5f0', padding: '1px 5px', borderRadius: '2px' }}>{entry._type}</span>}
+                      {entry.url && (
+                        <a href={entry.url} target="_blank" rel="noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ display: 'inline-block', marginLeft: '6px', color: '#5d9470', fontSize: '9px', letterSpacing: '0.04em', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
+                          📎 ver comprovante
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
