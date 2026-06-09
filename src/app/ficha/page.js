@@ -112,13 +112,12 @@ export default function PublicFicha() {
       if (data.medical_form_step) setCurrentStep(Math.min(data.medical_form_step, 8));
       if (data.medications_list) setMedications(data.medications_list);
       const firstName = data.nickname || (data.name || '').split(' ')[0] || '';
-      const fullName = data.nome_completo || '';
+      const bestName = data.nome_completo || firstName;
       if (data.medical_form_data && Object.keys(data.medical_form_data).length > 0) {
-        const saved = { ...data.medical_form_data };
-        if (!saved.nome_completo) saved.nome_completo = firstName;
+        const saved = { ...data.medical_form_data, nome_completo: bestName };
         setFormData(prev => ({ ...prev, ...saved }));
       } else {
-        setFormData(prev => ({ ...prev, nome_completo: fullName || firstName, telefone: data.phone || '', cpf: data.cpf || '' }));
+        setFormData(prev => ({ ...prev, nome_completo: bestName, telefone: data.phone || '', cpf: data.cpf || '' }));
       }
     })();
   }, []);
