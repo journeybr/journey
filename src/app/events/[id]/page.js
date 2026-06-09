@@ -80,9 +80,10 @@ const PinIcon = ({ active }) => active ? (
 const PillIcon = ({ status = 'pending', size = 22, strokeColor }) => {
   const isOk = status === 'ok';
   const isAttn = status === 'attention';
-  const fill = isOk ? '#5d9470' : isAttn ? '#c0392b' : 'none';
-  const stroke = (!isOk && !isAttn) ? (strokeColor || '#c8c2b8') : 'none';
-  const lineColor = (!isOk && !isAttn) ? (strokeColor || '#c8c2b8') : 'rgba(255,255,255,0.5)';
+  const isWarn = status === 'warn';
+  const fill = isOk ? '#5d9470' : isAttn ? '#c0392b' : isWarn ? '#c4892a' : 'none';
+  const stroke = (!isOk && !isAttn && !isWarn) ? (strokeColor || '#c8c2b8') : 'none';
+  const lineColor = (!isOk && !isAttn && !isWarn) ? (strokeColor || '#c8c2b8') : 'rgba(255,255,255,0.5)';
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" style={{ display: 'block', flexShrink: 0 }}>
       <g transform="rotate(-38 8 8)">
@@ -470,6 +471,7 @@ const s = {
 
 function computeEffectiveRemedioStatus(p) {
   if (p.remedio_status === 'Ok Manual') return 'Ok Manual';
+  if (p.remedio_status === 'Acompanhar') return 'Acompanhar';
   const r = p.contacts?.remedio;
   const fichaComplete = r === 'não' || r === 'em andamento';
   if (!fichaComplete) {
@@ -1399,7 +1401,7 @@ export default function EventDetail({ params }) {
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
             onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })}
           >
-            <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
+            <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
           </div>
         ) : (
           <span style={{ color: '#c0b8b0', display: 'flex', justifyContent: 'center', width: '100%' }}>—</span>
@@ -1531,7 +1533,7 @@ export default function EventDetail({ params }) {
             <span onClick={() => { const ns = p.status === 'desistiu' ? 'Confirmado' : 'desistiu'; if (ns === 'desistiu' && !confirm(`Marcar ${p.contacts?.name?.split(' ')[0]} como desistente?`)) return; updateParticipantStatus(p.contact_id, ns); }} style={{ cursor: 'pointer', color: p.status === 'desistiu' ? '#c0392b' : '#c8c2b8', fontSize: '11px', userSelect: 'none' }}>✕</span>
             {!isSimplified && hasRemedioAccess && (
               <span onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
+                <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
               </span>
             )}
             {(() => {
@@ -1884,8 +1886,12 @@ export default function EventDetail({ params }) {
         const rContact = rp.contacts;
         const rStatus = computeEffectiveRemedioStatus(rp);
         const rIsOk = rStatus === 'Ok' || rStatus === 'Ok Manual';
+        const rIsAcomp = rStatus === 'Acompanhar';
         const hasFicha = !!(rContact?.medical_form_data || rContact?.medical_form_step > 0);
         const btnBase = { width: '100%', padding: '10px 12px', background: 'transparent', border: '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: '#3a3530', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' };
+        const pillStatus = rIsOk ? 'ok' : rIsAcomp ? 'warn' : rStatus === 'preenchido' ? 'attention' : 'pending';
+        const headerColor = rIsOk ? '#5d9470' : rIsAcomp ? '#c4892a' : '#c0392b';
+        const statusLabel = rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Definido como Ok' : rStatus === 'Acompanhar' ? 'Definido para acompanhar' : rStatus === 'preenchido' ? 'Ficha preenchida — possui remédios' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento';
         return (
           <div
             onClick={() => setRemedioModal(null)}
@@ -1899,9 +1905,9 @@ export default function EventDetail({ params }) {
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>
                   {rContact?.nickname || rContact?.name}
                 </div>
-                <div style={{ fontSize: '10px', color: rIsOk ? '#5d9470' : '#c0392b', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <PillIcon status={rIsOk ? 'ok' : rStatus === 'preenchido' ? 'attention' : 'pending'} />
-                  {rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Forçado OK' : rStatus === 'preenchido' ? 'Ficha preenchida — possui remédios' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento'}
+                <div style={{ fontSize: '10px', color: headerColor, marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <PillIcon status={pillStatus} />
+                  {statusLabel}
                 </div>
               </div>
 
@@ -1912,13 +1918,21 @@ export default function EventDetail({ params }) {
                     onClick={() => { updateRemedioStatus(remedioModal.contactId, 'Ok Manual'); setRemedioModal(null); }}
                     style={{ ...btnBase, color: '#5d9470', border: '0.5px solid #9dcfb4' }}
                   >
-                    ✓ Forçar Ok Manual
+                    ✓ Definir como Ok
                   </button>
                 )}
-                {rStatus === 'Ok Manual' && (
+                {!rIsAcomp && (
+                  <button
+                    onClick={() => { updateRemedioStatus(remedioModal.contactId, 'Acompanhar'); setRemedioModal(null); }}
+                    style={{ ...btnBase, color: '#c4892a', border: '0.5px solid #e8c07a' }}
+                  >
+                    ◑ Definir como Acompanhar
+                  </button>
+                )}
+                {(rStatus === 'Ok Manual' || rIsAcomp) && (
                   <button
                     onClick={() => { updateRemedioStatus(remedioModal.contactId, 'enviar'); setRemedioModal(null); }}
-                    style={{ ...btnBase, color: '#c0392b' }}
+                    style={{ ...btnBase, color: '#9a9288' }}
                   >
                     ↩ Voltar para Pendente
                   </button>
