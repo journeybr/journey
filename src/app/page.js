@@ -103,6 +103,7 @@ export default function Home() {
   const [formData, setFormData] = useState({ nickname: '', nome_completo: '', });
   const [countryCode, setCountryCode] = useState('+55');
   const [phoneBody, setPhoneBody] = useState('');
+  const [originalPhoneState, setOriginalPhoneState] = useState({ body: '', code: '+55' });
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
@@ -153,9 +154,10 @@ export default function Home() {
 
     if (combinedPhone) {
       const cleanNew = combinedPhone.replace(/\D/g, '');
-      const originalPhone = (editingContact?.phone || '').replace(/\D/g, '');
-      const phoneChanged = cleanNew !== originalPhone;
-      if (!editingContact || phoneChanged) {
+      const phoneChanged = editingContact
+        ? (phoneBody !== originalPhoneState.body || countryCode !== originalPhoneState.code)
+        : true;
+      if (phoneChanged) {
         const dup = contacts.find(c => {
           const cClean = (c.phone || '').replace(/\D/g, '');
           return cClean && cClean === cleanNew && c.id !== editingContact?.id;
@@ -204,6 +206,7 @@ export default function Home() {
     }
     setCountryCode(foundDdi);
     setPhoneBody(foundBody);
+    setOriginalPhoneState({ body: foundBody, code: foundDdi });
     setIsModalOpen(true);
   }
 
@@ -341,7 +344,16 @@ export default function Home() {
                     <input type="text" required value={formData.nickname} onChange={e => setFormData({ ...formData, nickname: e.target.value })} style={{ ...s.fieldInput, marginTop: '5px' }} />
                   </div>
                   <div>
-                    <label style={s.label}>Nome Completo</label>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <label style={s.label}>Nome Completo (Documentos)</label>
+                      {formData.nickname && (
+                        <button type="button"
+                          onClick={() => setFormData(f => ({ ...f, nome_completo: f.nickname }))}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em', textDecoration: 'underline', textUnderlineOffset: '2px', padding: 0 }}>
+                          copiar ↑
+                        </button>
+                      )}
+                    </div>
                     <input type="text" value={formData.nome_completo} onChange={e => setFormData({ ...formData, nome_completo: e.target.value })} style={{ ...s.fieldInput, marginTop: '5px' }} />
                   </div>
                   <div>
