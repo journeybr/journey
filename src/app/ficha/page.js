@@ -317,7 +317,7 @@ export default function PublicFicha() {
         if (recErr) console.error('medical_records:', recErr.message);
 
         const firstName = (fd.nome_completo || 'Viajante').trim().split(' ')[0];
-        const logEntry = { at: new Date().toISOString(), by: firstName, msg: `${firstName} preencheu a ficha de triagem` };
+        const logEntry = { at: new Date().toISOString(), by: firstName, msg: `${firstName} preencheu a ficha de triagem`, type: 'ficha' };
         const { data: parts } = await supabase
           .from('event_participants')
           .select('event_id, enrollment_log, events(active)')

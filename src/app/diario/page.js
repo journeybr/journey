@@ -51,6 +51,7 @@ export default function DiarioPage() {
   const [rangeTo, setRangeTo] = useState('');
   const [personSearch, setPersonSearch] = useState('');
   const [ceremoniaFilter, setCeremoniaFilter] = useState('');
+  const [typeFilter, setTypeFilter] = useState(new Set());
   const [isMobile, setIsMobile] = useState(false);
   const router = useRouter();
 
@@ -84,7 +85,7 @@ export default function DiarioPage() {
         const ceremony = p.events?.name || '—';
         const eventId = p.events?.id;
         (p.enrollment_log || []).forEach(e =>
-          entries.push({ ...e, _name: name, _ceremony: ceremony, _eventId: eventId, _type: 'inscrição' })
+          entries.push({ ...e, _name: name, _ceremony: ceremony, _eventId: eventId, _type: e.type || 'inscrição' })
         );
         (p.payment_log || []).forEach(e =>
           entries.push({ ...e, _name: name, _ceremony: ceremony, _eventId: eventId, _type: 'pagamento' })
@@ -101,22 +102,23 @@ export default function DiarioPage() {
     router.push('/login');
   }
 
-  const todayStr     = new Date().toISOString().slice(0, 10);
-  const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const fiveDaysAgo  = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
+  const bDate = (d) => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  const todayStr     = bDate(Date.now());
+  const yesterdayStr = bDate(Date.now() - 86400000);
+  const fiveDaysAgo  = bDate(Date.now() - 4 * 86400000);
 
   let filtered;
   if (filter === 'all') {
     filtered = allEntries;
   } else if (filter === 'today') {
-    filtered = allEntries.filter(e => e.at.startsWith(todayStr));
+    filtered = allEntries.filter(e => bDate(e.at) === todayStr);
   } else if (filter === 'yesterday') {
-    filtered = allEntries.filter(e => e.at.startsWith(yesterdayStr));
+    filtered = allEntries.filter(e => bDate(e.at) === yesterdayStr);
   } else if (filter === '5days') {
-    filtered = allEntries.filter(e => e.at.slice(0, 10) >= fiveDaysAgo);
+    filtered = allEntries.filter(e => bDate(e.at) >= fiveDaysAgo);
   } else {
     filtered = allEntries.filter(e => {
-      const d = e.at.slice(0, 10);
+      const d = bDate(e.at);
       return (!rangeFrom || d >= rangeFrom) && (!rangeTo || d <= rangeTo);
     });
   }
@@ -129,6 +131,16 @@ export default function DiarioPage() {
   if (ceremoniaFilter) {
     filtered = filtered.filter(e => e._eventId === ceremoniaFilter);
   }
+
+  if (typeFilter.size > 0) {
+    filtered = filtered.filter(e => typeFilter.has(e._type));
+  }
+
+  const toggleType = (t) => setTypeFilter(prev => {
+    const next = new Set(prev);
+    if (next.has(t)) next.delete(t); else next.add(t);
+    return next;
+  });
 
   const allCeremonies = [...new Map(allEntries.map(e => [e._eventId, { id: e._eventId, name: e._ceremony }])).values()]
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -205,6 +217,21 @@ export default function DiarioPage() {
             ))}
           </select>
         )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '4px' }}>
+          {[
+            { key: 'inscrição',  label: 'Inscrição',   color: '#5d9470', bg: '#eef5f0' },
+            { key: 'pagamento',  label: 'Pagamento',   color: '#7a68a4', bg: '#f0eef8' },
+            { key: 'ficha',      label: 'Ficha',       color: '#b87a1a', bg: '#fdf3e3' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => toggleType(t.key)}
+              style={{ padding: '4px 11px', borderRadius: '2px', cursor: 'pointer', border: typeFilter.has(t.key) ? `0.5px solid ${t.color}` : '0.5px dashed #c8c2b8', background: typeFilter.has(t.key) ? t.bg : 'transparent', color: typeFilter.has(t.key) ? t.color : '#7a7268', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', transition: 'all 0.15s' }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
         {!loading && (
           <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#aaa49c', letterSpacing: '0.06em' }}>
             {filtered.length} registro{filtered.length !== 1 ? 's' : ''}
@@ -228,17 +255,18 @@ export default function DiarioPage() {
               hour: '2-digit', minute: '2-digit',
               timeZone: 'America/Sao_Paulo',
             });
-            const isPayment = entry._type === 'pagamento';
+            const typeColors = { pagamento: { fg: '#7a68a4', bg: '#f0eef8' }, ficha: { fg: '#b87a1a', bg: '#fdf3e3' } };
+            const tc = typeColors[entry._type] || { fg: '#5d9470', bg: '#eef5f0' };
             return (
               <div
                 key={i}
                 style={{ display: 'flex', gap: '12px', padding: '0.65rem 0', borderBottom: '0.5px dashed #ddd9cf', alignItems: 'flex-start' }}
               >
-                <div style={{ width: '4px', flexShrink: 0, borderRadius: '2px', background: isPayment ? '#7a68a4' : '#5d9470', alignSelf: 'stretch', marginTop: '3px', minHeight: '16px' }} />
+                <div style={{ width: '4px', flexShrink: 0, borderRadius: '2px', background: tc.fg, alignSelf: 'stretch', marginTop: '3px', minHeight: '16px' }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '3px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '9px', color: '#aaa49c', letterSpacing: '0.04em', flexShrink: 0 }}>{dt}</span>
-                    <span style={{ fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase', color: isPayment ? '#7a68a4' : '#5d9470', background: isPayment ? '#f0eef8' : '#eef5f0', padding: '1px 5px', borderRadius: '2px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase', color: tc.fg, background: tc.bg, padding: '1px 5px', borderRadius: '2px', flexShrink: 0 }}>
                       {entry._type}
                     </span>
                     <a
