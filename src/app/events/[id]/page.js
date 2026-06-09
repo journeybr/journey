@@ -2679,7 +2679,16 @@ export default function EventDetail({ params }) {
 
               {/* Nome Completo */}
               <div>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Nome Completo (documentos)</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c' }}>Nome Completo (documentos)</div>
+                  {contactEditModal.nickname && (
+                    <button type="button"
+                      onClick={() => setContactEditModal(prev => ({ ...prev, nome_completo: prev.nickname }))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em', textDecoration: 'underline', textUnderlineOffset: '2px', padding: 0 }}>
+                      copiar ↑
+                    </button>
+                  )}
+                </div>
                 <input
                   type="text"
                   value={contactEditModal.nome_completo}
