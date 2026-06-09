@@ -224,22 +224,42 @@ export default function PagamentosPage() {
     if (!error) updateLocal(contactId, eventId, updateData);
   }
 
+  function prevToLabel(prev) {
+    return { 'em aberto': 'Em Aberto', 'pago': 'Pago', 'a pagar no local': 'No Local', 'parcelado': 'Parcelado', 'conferir pagamento': 'Conferir' }[prev?.status || 'em aberto'] || prev?.status || 'Em Aberto';
+  }
+
   async function revertPayment(contactId, eventId) {
     const log = getLog(contactId, eventId);
     const last = log[log.length - 1];
     if (!last?.prev) return;
     const prev = last.prev;
-    const toLabel = { 'em aberto': 'Em Aberto', 'pago': 'Pago', 'a pagar no local': 'No Local', 'parcelado': 'Parcelado', 'conferir pagamento': 'Conferir' }[prev.status || 'em aberto'] || prev.status;
     const updateData = {
       payment_status: prev.status || 'em aberto',
       payment_method: prev.method || null,
       payment_records: prev.records || [],
       installment_count: prev.installment_count || null,
       discount: prev.discount ?? null,
-      payment_log: [...log, newLogEntry(`↺ retornou para ${toLabel}`)],
+      payment_log: [...log, newLogEntry(`↺ retornou para ${prevToLabel(prev)}`)],
     };
     await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
     updateLocal(contactId, eventId, updateData);
+  }
+
+  async function revertToLogEntry(contactId, eventId, entry) {
+    if (!entry.prev) return;
+    const prev = entry.prev;
+    const log = getLog(contactId, eventId);
+    const updateData = {
+      payment_status: prev.status || 'em aberto',
+      payment_method: prev.method || null,
+      payment_records: prev.records || [],
+      installment_count: prev.installment_count || null,
+      discount: prev.discount ?? null,
+      payment_log: [...log, newLogEntry(`↺ retornou para ${prevToLabel(prev)}`)],
+    };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    updateLocal(contactId, eventId, updateData);
+    setLogModal(null);
   }
 
   async function confirmPayment(contactId, eventId) {
@@ -697,7 +717,7 @@ export default function PagamentosPage() {
                           )}
                           {(p.payment_log?.length > 0) && (
                             <LogFooter log={p.payment_log} fmtLog={fmtLog}
-                              onOpenModal={() => setLogModal({ name, log: p.payment_log })}
+                              onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged })}
                               onRevert={() => revertEntry(p)} />
                           )}
                         </div>
@@ -784,7 +804,7 @@ export default function PagamentosPage() {
                       {(p.payment_log?.length > 0) && (
                         <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.35rem 1rem' }}>
                           <LogFooter log={p.payment_log} fmtLog={fmtLog}
-                            onOpenModal={() => setLogModal({ name, log: p.payment_log })}
+                            onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged })}
                             onRevert={() => revertEntry(p)} />
                         </div>
                       )}
@@ -925,14 +945,22 @@ export default function PagamentosPage() {
             <div style={{ overflowY: 'auto', padding: '0.8rem 1.5rem', flex: 1 }}>
               {[...logModal.log].reverse().map((entry, i) => (
                 <div key={i} style={{ padding: '0.5rem 0', borderBottom: '0.5px dashed #d0cbc2' }}>
-                  <div style={{ fontSize: '10px', color: '#3a3530', lineHeight: 1.5 }}>
-                    {entry.by && <span style={{ fontWeight: 600 }}>{entry.by} </span>}{entry.msg}
-                    {entry.url && (
-                      <a href={entry.url} target="_blank" rel="noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        style={{ display: 'inline-block', marginLeft: '6px', color: '#5d9470', fontSize: '9px', letterSpacing: '0.04em', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
-                        📎 ver comprovante
-                      </a>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                    <div style={{ flex: 1, fontSize: '10px', color: '#3a3530', lineHeight: 1.5 }}>
+                      {entry.by && <span style={{ fontWeight: 600 }}>{entry.by} </span>}{entry.msg}
+                      {entry.url && (
+                        <a href={entry.url} target="_blank" rel="noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ display: 'inline-block', marginLeft: '6px', color: '#5d9470', fontSize: '9px', letterSpacing: '0.04em', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
+                          📎 ver comprovante
+                        </a>
+                      )}
+                    </div>
+                    {entry.prev && !logModal.isMerged && (
+                      <button
+                        onClick={() => { if (confirm(`Reverter para "${prevToLabel(entry.prev)}"?`)) revertToLogEntry(logModal.contactId, logModal.eventId, entry); }}
+                        title={`Reverter para o estado antes desta ação (${prevToLabel(entry.prev)})`}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '15px', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>↺</button>
                     )}
                   </div>
                   <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{fmtLog(entry).split(' — ')[0]}</div>
