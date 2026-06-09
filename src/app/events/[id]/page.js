@@ -77,6 +77,13 @@ const PinIcon = ({ active }) => active ? (
   </svg>
 );
 
+const TransferIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+    <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+    <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+  </svg>
+);
+
 const PillIcon = ({ status = 'pending', size = 22, strokeColor }) => {
   const isOk = status === 'ok';
   const isAttn = status === 'attention';
@@ -567,6 +574,8 @@ export default function EventDetail({ params }) {
   const [contactAllDays, setContactAllDays] = useState([]);
   const [crossCeremonyExpected, setCrossCeremonyExpected] = useState({});
   const [contactEditModal, setContactEditModal] = useState(null);
+  const [activeOtherEvents, setActiveOtherEvents] = useState([]);
+  const [transferModal, setTransferModal] = useState(null);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [diaryDateFilter, setDiaryDateFilter] = useState('today');
   const [diaryRangeFrom, setDiaryRangeFrom] = useState('');
@@ -805,6 +814,9 @@ export default function EventDetail({ params }) {
     const { data: contactsData } = await supabase.from('contacts').select('id, name, nickname, nome_completo, phone').order('nickname');
     if (contactsData) setAllContacts(contactsData);
 
+    const { data: otherEventsData } = await supabase.from('events').select('id, name, date').eq('active', true).neq('id', eventId).order('date');
+    if (otherEventsData) setActiveOtherEvents(otherEventsData);
+
     setLoading(false);
   }
 
@@ -868,6 +880,18 @@ export default function EventDetail({ params }) {
     if (!error) {
       fetchEventData();
     }
+  }
+
+  async function transferParticipant(contactId, targetEventId) {
+    await supabase.from('event_participants').update({ status: 'desistiu' }).match({ event_id: eventId, contact_id: contactId });
+    const { data: existing } = await supabase.from('event_participants').select('id, status').match({ event_id: targetEventId, contact_id: contactId }).maybeSingle();
+    if (existing) {
+      if (existing.status === 'desistiu') await supabase.from('event_participants').update({ status: 'intenção de ir' }).match({ event_id: targetEventId, contact_id: contactId });
+    } else {
+      await supabase.from('event_participants').insert([{ contact_id: contactId, event_id: targetEventId, status: 'intenção de ir' }]);
+    }
+    setTransferModal(null);
+    fetchEventData();
   }
 
   async function toggleDayPresence(contactId, day, currentStatus) {
@@ -1283,12 +1307,14 @@ export default function EventDetail({ params }) {
   const day1ConfirmadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
   const day1ReservadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
   const day1PrimeiraVez = day1Active.filter(p => p.contacts?.primeira_vez).length;
-  const day1Stats = { confirmados: day1ConfirmadosCount, reservados: day1ReservadosCount, total: day1ConfirmadosCount + day1ReservadosCount, primeiraVez: day1PrimeiraVez };
+  const day1TotalCount = participants.filter(p => p.status !== 'desistiu' && p.date1_confirmed).length;
+  const day1Stats = { confirmados: day1ConfirmadosCount, reservados: day1ReservadosCount, total: day1TotalCount, primeiraVez: day1PrimeiraVez };
   const day2Active = activeParticipants.filter(p => p.date2_confirmed);
   const day2ConfirmadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
   const day2ReservadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
   const day2PrimeiraVez = day2Active.filter(p => p.contacts?.primeira_vez).length;
-  const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2ConfirmadosCount + day2ReservadosCount, primeiraVez: day2PrimeiraVez };
+  const day2TotalCount = participants.filter(p => p.status !== 'desistiu' && p.date2_confirmed).length;
+  const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2TotalCount, primeiraVez: day2PrimeiraVez };
 
   const renderParticipantRow = (p, isSimplified = false) => {
     const hasRemedioAccess = p.status === 'intenção de ir' || p.status === 'Confirmado';
@@ -1476,8 +1502,19 @@ export default function EventDetail({ params }) {
           </div>
         ) : <span style={{ color: '#c0b8b0' }}>—</span>}
 
-        {/* Ações: WhatsApp + Remover (remover só em desistentes) */}
+        {/* Ações: Transferir + WhatsApp + Remover */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+          {p.status !== 'desistiu' && activeOtherEvents.length > 0 && (
+            <span
+              title="Transferir para outra cerimônia"
+              onClick={() => setTransferModal({ contactId: p.contact_id, contactName: p.contacts?.nickname || p.contacts?.name || '—' })}
+              style={{ cursor: 'pointer', color: '#8a8278', opacity: 0.45, transition: 'opacity 0.15s', userSelect: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px' }}
+              onMouseEnter={e => e.currentTarget.style.opacity = 1}
+              onMouseLeave={e => e.currentTarget.style.opacity = 0.45}
+            >
+              <TransferIcon />
+            </span>
+          )}
           <span
             title="Abrir chat no WhatsApp"
             onClick={() => { const ph = p.contacts?.phone?.replace(/\D/g, ''); if (ph) window.open(`https://wa.me/${ph}`, '_blank'); }}
@@ -1875,6 +1912,31 @@ export default function EventDetail({ params }) {
               >
                 Cancelar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer modal */}
+      {transferModal && (
+        <div onClick={() => setTransferModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '320px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+            <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2' }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Transferir participante</div>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>{transferModal.contactName}</div>
+              <div style={{ fontSize: '10px', color: '#aaa49c', marginTop: '3px' }}>Selecione a cerimônia de destino</div>
+            </div>
+            <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {activeOtherEvents.map(ev => (
+                <button key={ev.id}
+                  onClick={() => { if (confirm(`Transferir ${transferModal.contactName} para "${ev.name}"?`)) transferParticipant(transferModal.contactId, ev.id); }}
+                  style={{ width: '100%', padding: '10px 12px', background: 'transparent', border: '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: '#3a3530', textAlign: 'left' }}>
+                  {ev.name}{ev.date ? ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}` : ''}
+                </button>
+              ))}
+            </div>
+            <div style={{ padding: '0 1.5rem 1.2rem' }}>
+              <button onClick={() => setTransferModal(null)} style={{ width: '100%', padding: '8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>cancelar</button>
             </div>
           </div>
         </div>
