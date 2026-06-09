@@ -186,7 +186,8 @@ export default function RegisterInterest() {
             status: 'Prospecto',
             remedio: 'não informado',
             medications_list: [],
-            medical_form_step: 0
+            medical_form_step: 0,
+            primeira_vez: true,
           }])
           .select()
           .single();
@@ -209,6 +210,9 @@ export default function RegisterInterest() {
         return;
       }
 
+      const interestName = (effectiveName.trim() || 'viajante').split(' ')[0];
+      const daysLabel = participation === 'both' ? 'Dia I e Dia II' : participation === 'day1' ? 'Dia I' : 'Dia II';
+      const enrollLog = [{ at: new Date().toISOString(), by: interestName, msg: `${interestName} manifestou interesse (${daysLabel})` }];
       const { error: linkErr } = await supabase
         .from('event_participants')
         .insert([{
@@ -219,7 +223,8 @@ export default function RegisterInterest() {
           date2_confirmed: participation !== 'day1',
           remedio_status: 'enviar',
           payment_status: 'em aberto',
-          vaga: 'Automático'
+          vaga: 'Automático',
+          enrollment_log: enrollLog
         }]);
 
       if (linkErr) throw linkErr;

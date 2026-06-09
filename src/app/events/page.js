@@ -19,6 +19,19 @@ const PlantIcon = () => (
   </svg>
 );
 
+const CoinNavIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M12 6v2M12 16v2M9.5 9.5c0-1.1.9-2 2.5-2s2.5.9 2.5 2c0 2.5-5 2.5-5 5s.9 2 2.5 2 2.5-.9 2.5-2"/>
+  </svg>
+);
+
+const DiarioNavIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+  </svg>
+);
+
 const s = {
   page: {
     fontFamily: "'Caveat', cursive",
@@ -261,9 +274,19 @@ function CeremonyFormModal({ data, setData, onSubmit, onClose, title, submitLabe
             <label style={modalLabelStyle}>Texto de Preparação</label>
             <textarea value={data.preparation_text || ''} onChange={e => setData({ ...data, preparation_text: e.target.value })} rows="3" placeholder="Informações e orientações para preparação..." style={{ ...modalInputStyle, resize: 'vertical' }} />
           </div>
-          <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{ marginBottom: '1.2rem' }}>
             <label style={modalLabelStyle}>Texto para Pagamento</label>
             <textarea value={data.payment_text || ''} onChange={e => setData({ ...data, payment_text: e.target.value })} rows="3" placeholder="Informações sobre formas de pagamento, valores, PIX..." style={{ ...modalInputStyle, resize: 'vertical' }} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div>
+              <label style={modalLabelStyle}>Preço 1 dia (USD)</label>
+              <input type="number" min="0" step="0.01" value={data.price_1d} onChange={e => setData({ ...data, price_1d: e.target.value })} placeholder="0.00" style={modalInputStyle} />
+            </div>
+            <div>
+              <label style={modalLabelStyle}>Preço 2 dias (USD)</label>
+              <input type="number" min="0" step="0.01" value={data.price_2d} onChange={e => setData({ ...data, price_2d: e.target.value })} placeholder="0.00" style={modalInputStyle} />
+            </div>
           </div>
           <div style={{ display: 'flex', gap: '0.8rem' }}>
             <button type="submit" style={modalSubmitStyle}>{submitLabel}</button>
@@ -281,7 +304,7 @@ export default function Events() {
   const [user, setUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-  const emptyForm = { name: '', date: '', date2: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '' };
+  const emptyForm = { name: '', date: '', date2: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', price_1d: '', price_2d: '' };
   const [formData, setFormData] = useState(emptyForm);
   const [editFormData, setEditFormData] = useState(emptyForm);
   const [inactiveEvents, setInactiveEvents] = useState([]);
@@ -317,7 +340,13 @@ export default function Events() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    const dataToInsert = { ...formData, date: formData.date || null, date2: formData.date2 || null };
+    const dataToInsert = {
+      ...formData,
+      date: formData.date || null,
+      date2: formData.date2 || null,
+      price_1d: formData.price_1d !== '' ? parseFloat(formData.price_1d) : null,
+      price_2d: formData.price_2d !== '' ? parseFloat(formData.price_2d) : null,
+    };
     const { error } = await supabase.from('events').insert([dataToInsert]);
     if (error) { alert('Erro ao criar cerimônia: ' + error.message); }
     else {
@@ -329,21 +358,39 @@ export default function Events() {
 
   async function handleUpdate(e) {
     e.preventDefault();
-    const dataToUpdate = { ...editFormData, date: editFormData.date || null, date2: editFormData.date2 || null };
+    const dataToUpdate = {
+      ...editFormData,
+      date: editFormData.date || null,
+      date2: editFormData.date2 || null,
+      price_1d: editFormData.price_1d !== '' ? parseFloat(editFormData.price_1d) : null,
+      price_2d: editFormData.price_2d !== '' ? parseFloat(editFormData.price_2d) : null,
+    };
     const { error } = await supabase.from('events').update(dataToUpdate).eq('id', editingEvent.id);
     if (error) { alert('Erro ao editar cerimônia: ' + error.message); }
     else { setEditingEvent(null); fetchEvents(); }
   }
 
   async function handleDeactivate(id) {
+    if (!confirm('Concluir esta experiência? Ela irá para a lista de cerimônias passadas.')) return;
     const { error } = await supabase.from('events').update({ active: false }).eq('id', id);
-    if (error) { alert('Erro ao desativar: ' + error.message); }
-    else fetchEvents();
+    if (error) { alert('Erro ao concluir: ' + error.message); return; }
+    // Mark confirmed participants as no longer "primeira vez"
+    const { data: parts } = await supabase
+      .from('event_participants')
+      .select('contact_id')
+      .eq('event_id', id)
+      .eq('status', 'Confirmado');
+    if (parts?.length) {
+      await supabase.from('contacts')
+        .update({ primeira_vez: false })
+        .in('id', parts.map(p => p.contact_id));
+    }
+    fetchEvents();
   }
 
   async function handleReactivate(id) {
     const { error } = await supabase.from('events').update({ active: true }).eq('id', id);
-    if (error) { alert('Erro ao reativar: ' + error.message); }
+    if (error) { alert('Erro ao retomar: ' + error.message); }
     else fetchEvents();
   }
 
@@ -359,12 +406,13 @@ export default function Events() {
       name: event.name || '',
       date: event.date || '',
       date2: event.date2 || '',
-
       image_url: event.image_url || '',
       invite_message: event.invite_message || '',
       address: event.address || '',
       preparation_text: event.preparation_text || '',
       payment_text: event.payment_text || '',
+      price_1d: event.price_1d != null ? String(event.price_1d) : '',
+      price_2d: event.price_2d != null ? String(event.price_2d) : '',
     });
     setEditingEvent(event);
   }
@@ -389,12 +437,23 @@ export default function Events() {
         <a href="/" style={s.navBrand}>Journey<span style={{ color: '#4a7a5a' }}>.</span></a>
         <div style={s.navLinks}>
           <a href="/" style={s.navLink}>
-            <PersonIcon /> Pessoas
+            <PersonIcon />{!isMobile && ' Pessoas'}
           </a>
           <a href="/events" style={{ ...s.navLink, ...s.navLinkActive }}>
-            <PlantIcon /> Cerimônias
+            <PlantIcon />{!isMobile && ' Cerimônias'}
+          </a>
+          <a href="/pagamentos" style={s.navLink}>
+            <CoinNavIcon />{!isMobile && ' Pagamentos'}
+          </a>
+          <a href="/diario" style={s.navLink}>
+            <DiarioNavIcon />{!isMobile && ' Diário'}
           </a>
 
+          <a href="/settings/users" style={{ ...s.navLink, color: '#6a6258' }} title="Gestão de usuários">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </a>
           <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>
             sair
           </button>
@@ -490,7 +549,7 @@ export default function Events() {
                   {/* Footer */}
                   <div style={{ borderTop: '0.5px dashed #c2b59b', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: '#8B0000', fontSize: '0.7rem', fontWeight: 'bold', fontFamily: 'sans-serif', letterSpacing: '1px' }}>
-                      {event.event_participants?.[0]?.count || 0} PASSAPORTES
+                      {event.event_participants?.[0]?.count || 0} PARTICIPANTES
                     </span>
                     <div style={{ display: 'flex', gap: '2px' }}>
                       <button
@@ -503,13 +562,13 @@ export default function Events() {
                         ✎
                       </button>
                       <button
-                        title="Desativar cerimônia"
+                        title="Concluir experiência"
                         onClick={e => { e.stopPropagation(); handleDeactivate(event.id); }}
                         style={{ ...s.cardActionBtn, color: '#c8a8a8' }}
                         onMouseEnter={e => e.currentTarget.style.color = '#8a7a58'}
                         onMouseLeave={e => e.currentTarget.style.color = '#c8a8a8'}
                       >
-                        ○
+                        ✓
                       </button>
                     </div>
                   </div>
@@ -532,7 +591,7 @@ export default function Events() {
               style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', padding: 0, marginBottom: showInactive ? '2rem' : 0 }}
             >
               <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c' }}>
-                {showInactive ? '▾' : '▸'} Journey desativadas ({inactiveEvents.length})
+                {showInactive ? '▾' : '▸'} Cerimônias concluídas ({inactiveEvents.length})
               </span>
             </button>
 
@@ -559,7 +618,9 @@ export default function Events() {
                     <div style={{ position: 'absolute', left: '8px', top: 0, bottom: 0, width: '3px', background: 'rgba(0,0,0,0.5)' }} />
                     <div style={{ position: 'absolute', right: '18px', top: '-1px', bottom: '-1px', width: '12px', background: '#1e1e1e', borderRadius: '1px', zIndex: 10 }} />
 
-                    <div style={{
+                    <div
+                    onClick={() => router.push(`/events/${event.id}`)}
+                    style={{
                       margin: '30px 45px 30px 25px',
                       background: '#e8e0d0',
                       color: '#555',
@@ -573,6 +634,7 @@ export default function Events() {
                       zIndex: 5,
                       fontFamily: '"Times New Roman", Times, serif',
                       filter: 'grayscale(40%)',
+                      cursor: 'pointer',
                     }}>
                       <h3 style={{ margin: '0 0 0.4rem', fontSize: '1.2rem', color: '#3a3530', borderBottom: '1px solid #c2b59b', paddingBottom: '0.3rem', fontWeight: 'bold', lineHeight: 1.2 }}>
                         {event.name}
@@ -584,12 +646,12 @@ export default function Events() {
 
                       <div style={{ borderTop: '0.5px dashed #c2b59b', paddingTop: '0.5rem', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#9a8a7a', fontSize: '0.65rem', fontFamily: 'sans-serif', letterSpacing: '1px' }}>
-                          DESATIVADA
+                          CONCLUÍDA
                         </span>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button
-                            title="Reativar cerimônia"
-                            onClick={() => handleReactivate(event.id)}
+                            title="Retomar experiência"
+                            onClick={e => { e.stopPropagation(); handleReactivate(event.id); }}
                             style={{ ...s.cardActionBtn, color: '#8a9a88', fontSize: '11px' }}
                             onMouseEnter={e => e.currentTarget.style.color = '#5d9470'}
                             onMouseLeave={e => e.currentTarget.style.color = '#8a9a88'}
@@ -598,7 +660,7 @@ export default function Events() {
                           </button>
                           <button
                             title="Excluir permanentemente"
-                            onClick={() => handleDelete(event.id)}
+                            onClick={e => { e.stopPropagation(); handleDelete(event.id); }}
                             style={{ ...s.cardActionBtn, color: '#c8a8a8', fontSize: '11px' }}
                             onMouseEnter={e => e.currentTarget.style.color = '#c0392b'}
                             onMouseLeave={e => e.currentTarget.style.color = '#c8a8a8'}
