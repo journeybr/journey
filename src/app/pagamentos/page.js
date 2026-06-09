@@ -925,7 +925,9 @@ export default function PagamentosPage() {
             <div style={{ overflowY: 'auto', padding: '0.8rem 1.5rem', flex: 1 }}>
               {[...logModal.log].reverse().map((entry, i) => (
                 <div key={i} style={{ padding: '0.5rem 0', borderBottom: '0.5px dashed #d0cbc2' }}>
-                  <div style={{ fontSize: '10px', color: '#3a3530', lineHeight: 1.5 }}>{entry.msg}</div>
+                  <div style={{ fontSize: '10px', color: '#3a3530', lineHeight: 1.5 }}>
+                    {entry.by && <span style={{ fontWeight: 600 }}>{entry.by} </span>}{entry.msg}
+                  </div>
                   <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{fmtLog(entry).split(' — ')[0]}</div>
                 </div>
               ))}
