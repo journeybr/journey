@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -100,6 +100,7 @@ const s = {
 export default function PagamentosPage() {
   const [user, setUser] = useState(null);
   const [adminName, setAdminName] = useState('admin');
+  const adminNameRef = useRef('admin');
   const [participants, setParticipants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -133,7 +134,9 @@ export default function PagamentosPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
     setUser(user);
-    setAdminName((user.email || 'admin').split('@')[0]);
+    const name = (user.email || 'admin').split('@')[0];
+    setAdminName(name);
+    adminNameRef.current = name;
     fetchData();
   }
 
@@ -162,7 +165,7 @@ export default function PagamentosPage() {
   }
 
   function newLogEntry(msg, prevState = null) {
-    const entry = { at: new Date().toISOString(), by: adminName, msg };
+    const entry = { at: new Date().toISOString(), by: adminNameRef.current, msg };
     if (prevState) entry.prev = prevState;
     return entry;
   }

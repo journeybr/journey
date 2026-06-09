@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, Fragment, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -37,6 +37,19 @@ const PlantIcon = () => (
     <path d="M12 22V10"/>
     <path d="M12 10C10 6 6 4 3 5c0 5 4 8 9 5Z"/>
     <path d="M12 14c2-4 6-6 9-5c0 5-4 8-9 5Z"/>
+  </svg>
+);
+
+const CoinNavIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M12 6v2M12 16v2M9.5 9.5c0-1.1.9-2 2.5-2s2.5.9 2.5 2c0 2.5-5 2.5-5 5s.9 2 2.5 2 2.5-.9 2.5-2"/>
+  </svg>
+);
+
+const DiarioNavIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
   </svg>
 );
 
@@ -83,13 +96,16 @@ const PillIcon = ({ status = 'pending', size = 22, strokeColor }) => {
 const CoinIcon = ({ status = 'em aberto' }) => {
   const isPago = status === 'pago';
   const isLocal = status === 'a pagar no local';
-  const isActive = isPago || isLocal;
-  const bg = isPago ? '#5d9470' : isLocal ? '#8a7a58' : 'none';
+  const isParcelado = status === 'parcelado';
+  const isConferir = status === 'conferir pagamento';
+  const isActive = isPago || isLocal || isParcelado || isConferir;
+  const bg = isPago ? '#5d9470' : isLocal ? '#8a7a58' : isParcelado ? '#7a68a4' : isConferir ? '#c4892a' : 'none';
   const fg = isActive ? '#f7f4ee' : '#c8c2b8';
+  const symbol = isConferir ? '?' : '$';
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" style={{ display: 'block', flexShrink: 0 }}>
       <circle cx="10" cy="10" r="8.5" fill={bg} stroke={isActive ? 'none' : '#c8c2b8'} strokeWidth="0.9"/>
-      <text x="10" y="10" textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="normal" fontFamily="Georgia, serif" fill={fg}>$</text>
+      <text x="10" y="10" textAnchor="middle" dominantBaseline="central" fontSize="9" fontWeight="normal" fontFamily="Georgia, serif" fill={fg}>{symbol}</text>
     </svg>
   );
 };
@@ -109,6 +125,33 @@ const DocumentIcon = ({ active }) => active ? (
     <line x1="16" y1="17" x2="8" y2="17"/>
   </svg>
 );
+
+function LogFooter({ log, fmtLog, onOpenModal, onRevert }) {
+  const last = log[log.length - 1];
+  const canRevert = !!last?.prev;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <span style={{ fontSize: '9px', color: '#b0a898', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5, flex: 1 }}>
+          {fmtLog(last)}
+        </span>
+        {canRevert && onRevert && (
+          <button
+            onClick={e => { e.stopPropagation(); if (confirm('Retornar ao status anterior?')) onRevert(); }}
+            title="Retornar ao status anterior"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '15px', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}
+          >↺</button>
+        )}
+      </div>
+      <button
+        onClick={e => { e.stopPropagation(); onOpenModal(); }}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em', padding: '0', textDecoration: 'underline', textUnderlineOffset: '2px', textAlign: 'left' }}
+      >
+        histórico{log.length > 1 ? ` (${log.length})` : ''}
+      </button>
+    </div>
+  );
+}
 
 // ── Estilos como objeto JS (Moleskine Theme) ──────────────────────────────
 const s = {
@@ -425,25 +468,61 @@ const s = {
   },
 };
 
-const FICHA_VALIDITY_MS = 30 * 24 * 60 * 60 * 1000;
-
 function computeEffectiveRemedioStatus(p) {
   if (p.remedio_status === 'Ok Manual') return 'Ok Manual';
-  const fichaDate = p.contacts?.last_ficha_at;
-  if (!fichaDate) {
+  const r = p.contacts?.remedio;
+  const fichaComplete = r === 'não' || r === 'em andamento';
+  if (!fichaComplete) {
     if (p.remedio_status === 'enviado') return 'enviado';
     return 'enviar';
   }
-  const fichaValid = (Date.now() - new Date(fichaDate).getTime()) < FICHA_VALIDITY_MS;
-  if (!fichaValid) {
-    if (p.remedio_status === 'enviado') return 'enviado';
-    return 'enviar';
-  }
-  if (p.contacts?.remedio === 'não') return 'Ok';
-  if (p.contacts?.remedio === 'em andamento' || p.contacts?.medications_list?.length > 0) return 'preenchido';
-  if (p.remedio_status === 'enviado') return 'enviado';
-  return 'enviar';
+  if (r === 'não') return 'Ok';
+  return 'preenchido';
 }
+
+const FICHA_SECTIONS = [
+  { title: '1. Declaração inicial', intro: 'Como participante, declaro que:', items: [
+    { k: 'sec1_maioridade', t: 'Sou adulto legalmente responsável e tenho capacidade plena para decidir.', full: 'Sou adulto legalmente responsável e tenho capacidade plena para decidir sobre minha participação.', pos: true },
+    { k: 'sec1_voluntaria', t: 'Minha participação é voluntária e consciente.', full: 'Minha participação é voluntária, consciente e baseada nas informações que recebi até o momento.', pos: true },
+    { k: 'sec1_leitura', t: 'Li o documento de preparação e compreendo as orientações.', full: 'Li o documento de preparação e compreendo as orientações gerais sobre preparação, conduta durante a experiência e integração posterior.', pos: true },
+    { k: 'sec1_nao_leu', t: 'Não recebi ou não li o documento de preparação.', full: 'Não recebi ou não li o documento de preparação.', pos: false },
+    { k: 'sec1_instrucoes', t: 'Comprometo-me a seguir as instruções da equipe antes, durante e depois.', full: 'Comprometo-me a seguir as instruções da equipe antes, durante e depois da experiência.', pos: true },
+    { k: 'sec1_conforto', t: 'Sinto-me confortável em praticar autorreflexão e comunicação honesta.', full: 'Sinto-me confortável em praticar autorreflexão, escutar com atenção, comunicar-me de forma honesta e assumir responsabilidade por questões emocionais, psicológicas ou pessoais que possam surgir.', pos: true },
+  ]},
+  { title: '2. Saúde mental e histórico psiquiátrico', intro: 'Confirmo que:', items: [
+    { k: 'sec2_esquizofrenia', t: 'Sem diagnóstico de esquizofrenia, transtornos psicóticos, bipolaridade ou transtornos de personalidade.', full: 'Não tenho diagnóstico atual ou histórico conhecido de esquizofrenia, transtornos psicóticos, transtorno bipolar tipo I ou II, ou transtornos de personalidade, incluindo, mas não se limitando a transtorno de personalidade borderline, narcisista ou esquizoide.', pos: true },
+    { k: 'sec2_familiar', t: 'Sem histórico familiar de esquizofrenia ou psicose.', full: 'Não tenho histórico familiar conhecido de esquizofrenia ou transtornos psicóticos graves.', pos: true },
+    { k: 'sec2_instaveis', t: 'Sem condição de saúde mental incapacitante, instável ou aguda no momento.', full: 'Não tenho condição de saúde mental incapacitante, instável ou aguda, incluindo crises psiquiátricas recentes, episódios dissociativos graves, mania, psicose, depressão severa descompensada ou condição relacionada a dependência química não estabilizada.', pos: true },
+    { k: 'sec2_ideacao', t: 'Sem ideação suicida ou homicida atual ou recente.', full: 'Não tenho ideação suicida ou homicida, atual ou recente.', pos: true },
+    { k: 'sec2_raiva', t: 'Sem problemas graves de controle de raiva ou impulsividade.', full: 'Não tenho problemas graves ou recorrentes de controle de raiva, impulsividade ou comportamento agressivo.', pos: true },
+    { k: 'sec2_historico', t: 'Tem ou já teve condição psiquiátrica, emocional ou comportamental relevante não informada.', full: 'Tenho ou já tive condição psiquiátrica, emocional ou comportamental relevante que ainda não informei.', pos: false },
+  ]},
+  { title: '3. Saúde física e histórico médico', intro: 'Confirmo que:', items: [
+    { k: 'sec3_cushing', t: 'Sem síndrome de Cushing.', full: 'Não tenho síndrome de Cushing.', pos: true },
+    { k: 'sec3_incapacitante', t: 'Sem condição médica incapacitante, instável ou de risco relevante.', full: 'Não tenho condição médica incapacitante, instável ou relevante que possa representar risco aumentado durante a experiência.', pos: true },
+    { k: 'sec3_cardio', t: 'Sem doenças cardiovasculares, hipertensão não controlada, aneurisma ou arritmias.', full: 'Não tenho doenças cardiovasculares, hipertensão não controlada, aneurisma, arritmias graves ou outras condições cardíacas ou circulatórias importantes.', pos: true },
+    { k: 'sec3_neuro', t: 'Sem distúrbios neurológicos relevantes (AVC, epilepsia, convulsões, etc.).', full: 'Não tenho histórico de distúrbios neurológicos relevantes, incluindo, mas não se limitando a AVC, epilepsia, convulsões, lesão cerebral grave ou outras condições neurológicas importantes.', pos: true },
+  ]},
+  { title: '4. Medicamentos, suplementos e substâncias', intro: 'Confirmo que:', items: [
+    { k: 'sec4a_informar', t: 'Comprometeu-se a informar completamente tudo que usa ou usou no último mês.', full: 'Informarei de forma completa e verdadeira todos os medicamentos, suplementos, substâncias, tratamentos ou produtos que estou usando atualmente ou que usei no último mês.', pos: true },
+    { k: 'sec4a_informar_tudo', t: 'Entende que deve informar tudo, mesmo que pareça irrelevante.', full: 'Entendo que devo informar tudo, mesmo que pareça irrelevante, ocasional, natural, recreativo, prescrito, não prescrito ou de venda livre.', pos: true },
+    { k: 'sec4a_sem_psicodelicos', t: 'Sem experiências psicodélicas nos últimos 30 dias e até a cerimônia.', full: 'Não participei de qualquer experiência com substâncias psicodélicas, enteógenas ou psicoativas nos últimos 30 dias — e não participarei até a data da cerimônia — incluindo, mas não se limitando a ayahuasca, psilocibina, cannabis, rapé, sananga, LSD, MDMA, DMT, mescalina, iboga, ketamina ou microdosagem.', pos: true },
+    { k: 'sec4a_abstinencia', t: 'Comprometo-me a não consumir substâncias até 5 dias após a cerimônia.', full: 'Comprometo-me a não consumir cannabis, substâncias psicodélicas listadas no item acima, estimulantes, sedativos ou quaisquer outras substâncias de hoje até cinco dias depois da cerimônia.', pos: true },
+    { k: 'sec4a_nao_portar', t: 'Comprometo-me a não portar ou consumir substâncias não autorizadas durante a experiência.', full: 'Comprometo-me a não levar, portar, compartilhar ou consumir durante a experiência qualquer substância, medicina, planta, suplemento ou produto psicoativo, incluindo, mas não se limitando a cannabis, rapé, sananga, álcool, estimulantes, sedativos, psicodélicos, enteógenos ou medicamentos de uso não informado, ciente de que o descumprimento deste compromisso poderá resultar na minha exclusão da experiência atual e de futuras cerimônias.', pos: true },
+    { k: 'sec4b_remedio', t: 'Não usa medicamentos com ação sobre o SNC que possam interagir com psicodélicos.', full: 'Não estou usando qualquer medicamento, suplemento ou substância com ação sobre humor, sono, ansiedade, depressão ou sistema nervoso que possa interagir ou apresentar conflito com substâncias psicodélicas, enteógenas ou psicoativas, incluindo, mas não se limitando a antidepressivos, ISRSs, IRSNs, IMAOs, estabilizadores de humor, antipsicóticos, ansiolíticos, benzodiazepínicos, sedativos, hipnóticos, estimulantes, medicamentos para dormir, lítio, suplementos serotoninérgicos, fitoterápicos ou produtos naturais com efeito psicoativo.', pos: true },
+    { k: 'sec4b_abstinencia_remedio', t: 'Comprometo-me a não consumir esses remédios até 5 dias após a cerimônia.', full: 'Comprometo-me a não consumir os remédios listados no item acima, estimulantes, sedativos ou quaisquer outras substâncias de hoje até cinco dias depois da cerimônia.', pos: true },
+    { k: 'sec4b_dependencia', t: 'Tem histórico de dependência de álcool, drogas, medicamentos ou outras substâncias.', full: 'Tenho histórico de dependência, abuso ou uso problemático de álcool, drogas, medicamentos prescritos ou outras substâncias.', pos: false },
+  ]},
+  { title: '5. Ciência sobre riscos e responsabilidade', intro: 'Declaro que:', items: [
+    { k: 'sec5_informacoes', t: 'Recebeu informações suficientes para participar de forma voluntária e consciente.', full: 'Recebi informações suficientes para decidir participar de forma voluntária e consciente.', pos: true },
+    { k: 'sec5_veracidade', t: 'Assume responsabilidade pela veracidade e completude das informações prestadas.', full: 'Assumo responsabilidade pela veracidade, completude e atualização das informações fornecidas por mim à equipe.', pos: true },
+    { k: 'sec5_responsabilidade', t: 'Assume responsabilidade pela sua conduta antes, durante e após a experiência.', full: 'Assumo responsabilidade pela minha decisão de participar, pela minha conduta antes, durante e depois da experiência, e pelo cumprimento das orientações de segurança recebidas.', pos: true },
+    { k: 'sec5_duvidas', t: 'Ainda tem dúvidas ou não compreendeu algum ponto do formulário.', full: 'Não compreendi algum ponto deste formulário ou ainda tenho dúvidas antes de assinar.', pos: false },
+  ]},
+  { title: '6. Confirmação final', items: [
+    { k: 'sec6_confirma', t: 'Confirmou que as informações são verdadeiras, completas e atualizadas.', full: 'Confirmo que as informações fornecidas por mim neste formulário são verdadeiras, completas e atualizadas até a presente data.', pos: true },
+  ]},
+];
 
 function computeVagaBadge(p) {
   const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
@@ -476,7 +555,20 @@ export default function EventDetail({ params }) {
   const [dayFilter, setDayFilter] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentSummaryOpen, setPaymentSummaryOpen] = useState(false);
+  const [registerInstallment, setRegisterInstallment] = useState(null);
+  const [obsModal, setObsModal] = useState(null);
+  const [otherEventsMap, setOtherEventsMap] = useState({});
+  const [logModal, setLogModal] = useState(null);
+  const [adminName, setAdminName] = useState('admin');
+  const adminNameRef = useRef('admin');
+  const [confirmPartialModal, setConfirmPartialModal] = useState(null);
+  const [contactAllDays, setContactAllDays] = useState([]);
+  const [crossCeremonyExpected, setCrossCeremonyExpected] = useState({});
   const [contactEditModal, setContactEditModal] = useState(null);
+  const [diaryOpen, setDiaryOpen] = useState(false);
+  const [diaryDateFilter, setDiaryDateFilter] = useState('today');
+  const [diaryRangeFrom, setDiaryRangeFrom] = useState('');
+  const [diaryRangeTo, setDiaryRangeTo] = useState('');
   const router = useRouter();
 
   useEffect(() => {
@@ -486,230 +578,147 @@ export default function EventDetail({ params }) {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  useEffect(() => {
+    if (!paymentSummaryOpen || !eventId) return;
+    const conferirIds = participants
+      .filter(p => p.payment_status === 'conferir pagamento')
+      .map(p => p.contact_id);
+    if (conferirIds.length === 0) { setOtherEventsMap({}); return; }
+    supabase
+      .from('event_participants')
+      .select('contact_id, events(id, name)')
+      .in('contact_id', conferirIds)
+      .neq('event_id', eventId)
+      .not('status', 'eq', 'desistiu')
+      .then(({ data }) => {
+        const map = {};
+        (data || []).forEach(row => {
+          if (!row.events) return;
+          if (!map[row.contact_id]) map[row.contact_id] = [];
+          map[row.contact_id].push(row.events.name);
+        });
+        setOtherEventsMap(map);
+      });
+  }, [paymentSummaryOpen, eventId]);
+
+  useEffect(() => {
+    if (!paymentModal?.contactId) { setContactAllDays([]); return; }
+    const today = new Date().toISOString().split('T')[0];
+    supabase
+      .from('event_participants')
+      .select('date1_confirmed, date2_confirmed, events(date, date2)')
+      .eq('contact_id', paymentModal.contactId)
+      .not('status', 'eq', 'desistiu')
+      .then(({ data }) => {
+        const days = [];
+        (data || []).forEach(row => {
+          if (!row.events) return;
+          if (row.date1_confirmed && row.events.date && row.events.date >= today)
+            days.push(row.events.date);
+          if (row.date2_confirmed && row.events.date2 && row.events.date2 >= today)
+            days.push(row.events.date2);
+        });
+        days.sort();
+        setContactAllDays(days);
+      });
+  }, [paymentModal?.contactId]);
+
   const exportFichaPDF = (contact) => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      alert('Por favor, permita pop-ups para exportar o PDF.');
-      return;
-    }
+    if (!printWindow) { alert('Por favor, permita pop-ups para exportar o PDF.'); return; }
 
-    let medsHTML = '';
-    if (contact.medications_list && contact.medications_list.length > 0) {
-      contact.medications_list.forEach(med => {
-        medsHTML += `
+    const mfd = contact.medical_form_data || {};
+
+    const medsHTML = contact.medications_list?.length > 0
+      ? contact.medications_list.map(m => `
           <div class="med-card">
-            <div class="med-name">💊 ${med.name}</div>
-            ${(med.dosage || med.frequency) ? `
-              <div class="med-desc">
-                Dosagem: ${med.dosage || 'Não informada'} | Frequência: ${med.frequency || 'Não informada'}
-              </div>
-            ` : ''}
-          </div>
-        `;
-      });
-    } else {
-      medsHTML = `<p class="no-info">Nenhum remédio de uso contínuo informado (declarou não tomar remédios).</p>`;
-    }
+            <div class="med-name">${m.name}</div>
+            <div class="med-desc">${[m.dosage, m.frequency, m.last_use ? 'Último uso: ' + m.last_use : ''].filter(Boolean).join(' · ') || ''}</div>
+          </div>`).join('') + (mfd.sec4c_outros ? `<div class="obs-box"><strong>Outros:</strong> ${mfd.sec4c_outros}</div>` : '')
+      : '<p class="no-info">Nenhum remédio informado.</p>';
 
-    let obsHTML = '';
-    if (contact.observations) {
-      const cleanObs = contact.observations
-        .replace(/\[Ficha Médica preenchida online[^\]]*\]\s*/g, '')
-        .replace(/Declaração: Aceita e declarada como verdadeira em [^\n]*/g, '');
-      obsHTML = `<div class="observations">${cleanObs.trim() || 'Nenhuma observação declarada.'}</div>`;
-    } else {
-      obsHTML = `<p class="no-info">Nenhuma observação ou terapia alternativa declarada.</p>`;
-    }
-
-    let dateString = new Date().toLocaleDateString('pt-BR');
-    if (contact.observations) {
-      const match = contact.observations.match(/em (\d{2}\/\d{2}\/\d{4})/i);
-      if (match && match[1]) {
-        dateString = match[1];
-      }
-    }
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Ficha Médica - ${contact.name}</title>
-        <style>
-          @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=Montserrat:wght@400;600&display=swap');
-          body {
-            font-family: 'Lora', Georgia, serif;
-            color: #2b2b2b;
-            line-height: 1.6;
-            padding: 3rem;
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: #fff;
-          }
-          .header {
-            text-align: center;
-            border-bottom: 2px double #8b7e66;
-            padding-bottom: 1.5rem;
-            margin-bottom: 2.5rem;
-          }
-          .header h1 {
-            font-family: 'Cinzel', serif;
-            font-size: 1.8rem;
-            color: #3d6b52;
-            margin: 0;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-          }
-          .header p {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 0.8rem;
-            color: #666;
-            margin: 0.5rem 0 0 0;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-          }
-          .section-title {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 0.85rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: #3d6b52;
-            border-bottom: 1px solid #d4cbb8;
-            padding-bottom: 0.4rem;
-            margin-top: 2rem;
-            margin-bottom: 1.5rem;
-          }
-          .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-            font-size: 0.95rem;
-          }
-          .info-item strong {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            color: #555;
-            display: block;
-            margin-bottom: 0.2rem;
-          }
-          .med-card {
-            padding: 0.8rem 1.2rem;
-            background: #faf9f6;
-            border-left: 3px solid #3d6b52;
-            border-bottom: 1px solid #e8e2d5;
-            border-right: 1px solid #e8e2d5;
-            border-top: 1px solid #e8e2d5;
-            border-radius: 6px;
-            margin-bottom: 0.8rem;
-          }
-          .med-name {
-            font-weight: bold;
-            color: #1a1a1a;
-          }
-          .med-desc {
-            font-size: 0.8rem;
-            color: #555;
-            font-style: italic;
-            margin-top: 0.2rem;
-          }
-          .observations {
-            font-style: italic;
-            color: #444;
-            white-space: pre-wrap;
-            background: #faf9f6;
-            padding: 1rem 1.5rem;
-            border: 1px dashed #d4cbb8;
-            border-radius: 6px;
-            margin-top: 0.5rem;
-            font-size: 0.9rem;
-          }
-          .no-info {
-            color: #888;
-            font-style: italic;
-            font-size: 0.9rem;
-          }
-          .signature-area {
-            margin-top: 5rem;
-            text-align: center;
-            border-top: 1px solid #d4cbb8;
-            padding-top: 1.8rem;
-            page-break-inside: avoid;
-          }
-          .signature-text {
-            font-family: 'Lora', serif;
-            font-size: 1.15rem;
-            font-style: italic;
-            color: #1a1a1a;
-            margin-bottom: 0.4rem;
-          }
-          .signature-date {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 1.5px;
-            color: #666;
-          }
-          @media print {
-            body {
-              padding: 1cm;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Relatório de Ficha Médica</h1>
-          <p>Journey • Confidencial & Formal</p>
-        </div>
-
-        <div class="section-title">Dados de Identificação</div>
-        <div class="info-grid">
-          <div class="info-item">
-            <strong>Nome do Viajante</strong>
-            ${contact.name}
-          </div>
-          <div class="info-item">
-            <strong>CPF</strong>
-            ${contact.cpf ? contact.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : 'Não informado'}
-          </div>
-          <div class="info-item">
-            <strong>Telefone</strong>
-            ${contact.phone || 'Não informado'}
-          </div>
-          <div class="info-item">
-            <strong>Status de Remédios</strong>
-            ${contact.remedio === 'não' ? '✅ DECLARADO SEM USO DE REMÉDIOS' : '⏳ CONCORRE A AVALIAÇÃO DE MEDICAMENTOS'}
-          </div>
-        </div>
-
-        <div class="section-title">1. Medicamentos e Remédios de Uso Contínuo</div>
-        <div>
+    const itemOk = (it) => it.pos ? !!mfd[it.k] : !mfd[it.k];
+    const sectionsHTML = FICHA_SECTIONS.map(sec => {
+      const isSection4 = !!sec.items.find(it => it.k === 'sec4b_dependencia');
+      const extraAfter = isSection4 ? `
+        <div style="margin-top:0.8rem;">
+          <div style="font-size:10px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;color:#3d6b52;border-bottom:1px solid #d4cbb8;padding-bottom:0.2rem;margin-bottom:0.5rem;">Lista de medicamentos, suplementos e substâncias informadas</div>
           ${medsHTML}
-        </div>
+        </div>` : '';
+      return `
+      <div class="section-title">${sec.title}</div>
+      ${sec.intro ? `<div class="section-intro">${sec.intro}</div>` : ''}
+      <div class="declarations">
+        ${sec.items.map(it => {
+          const checked = !!mfd[it.k];
+          const ok = itemOk(it);
+          return `<div class="decl-row ${ok ? '' : 'concern'}">
+            <span class="decl-check">${checked ? '☑' : '☐'}</span>
+            <span class="decl-text">${it.full}</span>
+          </div>`;
+        }).join('')}
+        ${sec.items.find(it => it.k === 'sec2_historico') && mfd.sec2_historico_obs
+          ? `<div class="obs-box"><em>Mais informações:</em> ${mfd.sec2_historico_obs}</div>` : ''}
+      </div>
+      ${extraAfter}`;
+    }).join('');
 
-        <div class="section-title">2. Observações e Terapias Alternativas</div>
-        <div>
-          ${obsHTML}
-        </div>
+    const sigHTML = mfd.assinatura
+      ? `<img src="${mfd.assinatura}" style="max-width:340px; height:100px; object-fit:contain; display:block; margin:0.5rem auto;" />`
+      : `<div style="height:60px;border-bottom:1px solid #888;margin:1rem auto;width:340px;"></div>`;
 
-        <div class="signature-area">
-          <div class="signature-text">Assinado eletronicamente por ${contact.name}</div>
-          <div class="signature-date">Declaração de veracidade validada em ${dateString}</div>
-        </div>
+    printWindow.document.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8">
+      <title>Ficha Médica — ${contact.name}</title>
+      <style>
+        body { font-family: Georgia, serif; color: #2b2b2b; line-height:1.55; padding:2.5rem 3rem; max-width:800px; margin:0 auto; font-size:13px; }
+        h1 { font-size:1.5rem; color:#3d6b52; text-align:center; letter-spacing:2px; text-transform:uppercase; border-bottom:2px double #8b7e66; padding-bottom:1rem; margin-bottom:0.3rem; }
+        .subtitle { text-align:center; font-size:0.75rem; color:#777; text-transform:uppercase; letter-spacing:1px; margin-bottom:2rem; }
+        .section-title { font-size:0.78rem; font-weight:bold; text-transform:uppercase; letter-spacing:1.5px; color:#3d6b52; border-bottom:1px solid #d4cbb8; padding-bottom:0.3rem; margin-top:1.8rem; margin-bottom:0.8rem; }
+        .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem 2rem; margin-bottom:0.5rem; font-size:12px; }
+        .info-item .label { font-size:0.7rem; text-transform:uppercase; color:#777; display:block; }
+        .section-intro { font-size:11px; color:#666; margin-bottom:0.4rem; font-style:italic; }
+        .declarations { display:flex; flex-direction:column; gap:0.2rem; }
+        .decl-row { display:flex; gap:0.6rem; align-items:flex-start; padding:0.3rem 0.5rem; border:0.5px solid #e5dfd3; background:#fafaf6; border-radius:2px; }
+        .decl-row.concern { background:#fff8f0; border:0.5px solid #e8c080; }
+        .decl-check { flex-shrink:0; font-size:13px; width:16px; line-height:1.4; }
+        .decl-row.concern .decl-check { color:#d4821a; }
+        .decl-row:not(.concern) .decl-check { color:#3d6b52; }
+        .decl-text { font-size:11px; color:#2b2b2b; line-height:1.5; }
+        .decl-row.concern .decl-text { color:#7a3d00; font-weight:500; }
+        .obs-box { margin-top:0.3rem; padding:0.4rem 0.6rem; background:#fff8f0; border:0.5px solid #e8c080; border-radius:2px; font-size:11px; color:#5a3a00; font-style:italic; }
+        .med-card { padding:0.5rem 0.8rem; background:#faf9f6; border-left:3px solid #3d6b52; border:0.5px solid #e8e2d5; border-left:3px solid #3d6b52; border-radius:4px; margin-bottom:0.5rem; }
+        .med-name { font-weight:bold; color:#1a1a1a; font-size:12px; }
+        .med-desc { font-size:10px; color:#666; font-style:italic; margin-top:0.1rem; }
+        .no-info { color:#888; font-style:italic; font-size:11px; }
+        .sig-area { margin-top:2rem; padding-top:1rem; border-top:1px solid #d4cbb8; text-align:center; page-break-inside:avoid; }
+        .sig-date { font-size:10px; color:#888; text-transform:uppercase; letter-spacing:1px; margin-top:0.3rem; }
+        @media print { body { padding:1cm; } }
+      </style>
+    </head><body>
+      <h1>Formulário de Triagem</h1>
+      <div class="subtitle">Journey · Confidencial · ${new Date().toLocaleDateString('pt-BR')}</div>
 
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              window.print();
-            }, 300);
-          }
-        </script>
-      </body>
-      </html>
-    `);
+      <div class="section-title">Identificação</div>
+      <div class="info-grid">
+        <div class="info-item"><span class="label">Nome</span>${mfd.nome_completo || contact.name || '—'}</div>
+        <div class="info-item"><span class="label">Data de Nascimento</span>${mfd.data_nascimento || '—'}</div>
+        <div class="info-item"><span class="label">Telefone</span>${mfd.telefone ? (mfd.telefone_ddi || '') + ' ' + mfd.telefone : contact.phone || '—'}</div>
+        <div class="info-item"><span class="label">Contato de Emergência</span>${mfd.contato_emergencia || '—'}</div>
+        <div class="info-item"><span class="label">CPF</span>${contact.cpf || '—'}</div>
+        <div class="info-item"><span class="label">Status Remédios</span>${contact.remedio === 'não' ? 'Declarou não usar' : 'Possui remédios'}</div>
+      </div>
+
+      ${sectionsHTML}
+
+      <div class="sig-area">
+        <div style="font-size:11px;color:#888;margin-bottom:0.5rem;">Assinatura do participante</div>
+        ${sigHTML}
+        <div class="sig-date">Assinado em ${mfd.data_assinatura || new Date().toLocaleDateString('pt-BR')} · ${mfd.nome_completo || contact.name}</div>
+      </div>
+
+      <script>window.onload = function() { setTimeout(function() { window.print(); }, 400); }</script>
+    </body></html>`);
     printWindow.document.close();
   };
 
@@ -733,6 +742,9 @@ export default function EventDetail({ params }) {
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push('/login'); return; }
+    const _name = (user.email || 'admin').split('@')[0];
+    setAdminName(_name);
+    adminNameRef.current = _name;
 
     // Fetch Event Details
     const { data: eventData } = await supabase
@@ -750,6 +762,43 @@ export default function EventDetail({ params }) {
       .eq('event_id', eventId);
       
     if (partData) setParticipants(partData);
+
+    // Cross-ceremony pricing: find contacts with days in other active ceremonies within 29 days
+    if (partData && partData.length > 0 && eventData) {
+      const contactIds = partData.map(p => p.contact_id).filter(Boolean);
+      const { data: otherParts } = await supabase
+        .from('event_participants')
+        .select('contact_id, date1_confirmed, date2_confirmed, events!inner(date, date2, price_2d, active)')
+        .in('contact_id', contactIds)
+        .neq('event_id', eventId)
+        .not('status', 'eq', 'desistiu');
+
+      const thisDatesByContact = {};
+      partData.forEach(p => {
+        thisDatesByContact[p.contact_id] = [];
+        if (p.date1_confirmed && eventData.date) thisDatesByContact[p.contact_id].push(eventData.date);
+        if (p.date2_confirmed && eventData.date2) thisDatesByContact[p.contact_id].push(eventData.date2);
+      });
+
+      const crossMap = {};
+      (otherParts || [])
+        .filter(p => p.events?.active !== false)
+        .forEach(p => {
+          const otherDays = [];
+          if (p.date1_confirmed && p.events?.date) otherDays.push(p.events.date);
+          if (p.date2_confirmed && p.events?.date2) otherDays.push(p.events.date2);
+          const thisDays = thisDatesByContact[p.contact_id] || [];
+          for (const d1 of otherDays) {
+            for (const d2 of thisDays) {
+              if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) {
+                crossMap[p.contact_id] = eventData.price_2d != null ? eventData.price_2d / 2 : null;
+                break;
+              }
+            }
+          }
+        });
+      setCrossCeremonyExpected(crossMap);
+    }
 
     const { data: contactsData } = await supabase.from('contacts').select('id, name, nickname, nome_completo, phone').order('nickname');
     if (contactsData) setAllContacts(contactsData);
@@ -821,27 +870,39 @@ export default function EventDetail({ params }) {
 
   async function toggleDayPresence(contactId, day, currentStatus) {
     const field = day === 1 ? 'date1_confirmed' : 'date2_confirmed';
+    const dayLabel = day === 1 ? 'Dia I' : 'Dia II';
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const action = !currentStatus ? 'confirmou' : 'removeu';
+    const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`${action} ${dayLabel} para ${firstName}`)];
     const { error } = await supabase
       .from('event_participants')
-      .update({ [field]: !currentStatus })
+      .update({ [field]: !currentStatus, enrollment_log: newEnrollmentLog })
       .match({ event_id: eventId, contact_id: contactId });
-      
     if (!error) {
-      setParticipants(prev => prev.map(p => 
-        p.contact_id === contactId ? { ...p, [field]: !currentStatus } : p
+      setParticipants(prev => prev.map(p =>
+        p.contact_id === contactId ? { ...p, [field]: !currentStatus, enrollment_log: newEnrollmentLog } : p
       ));
     }
   }
 
   async function updateParticipantStatus(contactId, newStatus) {
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const msgMap = {
+      'Confirmado': `confirmou vaga de ${firstName}`,
+      'intenção de ir': `alterou ${firstName} para intenção de ir`,
+      'desistiu': `marcou ${firstName} como desistente`,
+    };
+    const msg = msgMap[newStatus] || `alterou status de ${firstName} para ${newStatus}`;
+    const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(msg)];
     const { error } = await supabase
       .from('event_participants')
-      .update({ status: newStatus })
+      .update({ status: newStatus, enrollment_log: newEnrollmentLog })
       .match({ event_id: eventId, contact_id: contactId });
-      
     if (!error) {
-      setParticipants(prev => prev.map(p => 
-        p.contact_id === contactId ? { ...p, status: newStatus } : p
+      setParticipants(prev => prev.map(p =>
+        p.contact_id === contactId ? { ...p, status: newStatus, enrollment_log: newEnrollmentLog } : p
       ));
     }
   }
@@ -922,16 +983,171 @@ export default function EventDetail({ params }) {
     }
   }
 
-  async function updatePayment(contactId, paymentStatus, paymentMethod) {
+  function newLogEntry(msg, prevState = null) {
+    const entry = { at: new Date().toISOString(), by: adminNameRef.current, msg };
+    if (prevState) entry.prev = prevState;
+    return entry;
+  }
+
+  function getParticipantLog(contactId) {
+    return participants.find(p => p.contact_id === contactId)?.payment_log || [];
+  }
+
+  function getEnrollmentLog(contactId) {
+    return participants.find(p => p.contact_id === contactId)?.enrollment_log || [];
+  }
+
+  async function revertPayment(contactId) {
+    const log = getParticipantLog(contactId);
+    const last = log[log.length - 1];
+    if (!last?.prev) return;
+    const prev = last.prev;
+    const toLabel = { 'em aberto': 'Em Aberto', 'pago': 'Pago', 'a pagar no local': 'No Local', 'parcelado': 'Parcelado', 'conferir pagamento': 'Conferir' }[prev.status || 'em aberto'] || prev.status;
+    const updateData = {
+      payment_status: prev.status || 'em aberto',
+      payment_method: prev.method || null,
+      payment_records: prev.records || [],
+      installment_count: prev.installment_count || null,
+      discount: prev.discount ?? null,
+      payment_log: [...log, newLogEntry(`↺ retornou para ${toLabel}`)],
+    };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    setParticipants(prev => prev.map(p => p.contact_id === contactId ? { ...p, ...updateData } : p));
+  }
+
+  async function updatePayment(contactId, paymentStatus, paymentMethod, options = {}) {
+    const { installmentCount, discount, applyDiscount, paymentAmount, paymentDate } = options;
+    const currentP = participants.find(p => p.contact_id === contactId);
+    const prevState = currentP ? {
+      status: currentP.payment_status || 'em aberto',
+      method: currentP.payment_method || null,
+      records: currentP.payment_records || [],
+      installment_count: currentP.installment_count || null,
+      discount: currentP.discount ?? null,
+    } : null;
+    const updateData = { payment_status: paymentStatus, payment_method: paymentMethod };
+
+    let logMsg = '';
+    if (paymentStatus === 'pago') {
+      const amount = paymentAmount !== '' && paymentAmount != null ? parseFloat(paymentAmount) : null;
+      updateData.payment_records = [{ amount, date: paymentDate || null, cancelled: false }];
+      updateData.installment_count = null;
+      logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
+    } else if (paymentStatus === 'parcelado') {
+      updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
+      logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
+    } else if (paymentStatus === 'em aberto') {
+      updateData.installment_count = null;
+      updateData.payment_records = [];
+      logMsg = 'reverteu para Em Aberto';
+    } else if (paymentStatus === 'a pagar no local') {
+      updateData.installment_count = null;
+      updateData.payment_records = [];
+      logMsg = 'registrou A Pagar no Local';
+    } else {
+      logMsg = `alterou status para ${paymentStatus}`;
+    }
+
+    updateData.discount = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+    updateData.payment_log = [...getParticipantLog(contactId), newLogEntry(logMsg, prevState)];
+
     const { error } = await supabase
       .from('event_participants')
-      .update({ payment_status: paymentStatus, payment_method: paymentMethod })
+      .update(updateData)
       .match({ event_id: eventId, contact_id: contactId });
     if (!error) {
       setParticipants(prev => prev.map(p =>
-        p.contact_id === contactId ? { ...p, payment_status: paymentStatus, payment_method: paymentMethod } : p
+        p.contact_id === contactId ? { ...p, ...updateData } : p
       ));
     }
+  }
+
+  async function addInstallmentPayment(contactId, amount, date) {
+    const participant = participants.find(p => p.contact_id === contactId);
+    const existing = participant?.payment_records || [];
+    const newRecords = [...existing, { amount: parseFloat(amount), date: date || null, cancelled: false }];
+    const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+    const newLog = [...getParticipantLog(contactId), newLogEntry(`registrou parcela de $${Number(amount).toFixed(2)}${dateStr ? ` em ${dateStr}` : ''}`)];
+    const { error } = await supabase
+      .from('event_participants')
+      .update({ payment_records: newRecords, payment_log: newLog })
+      .match({ event_id: eventId, contact_id: contactId });
+    if (!error) {
+      setParticipants(prev => prev.map(p =>
+        p.contact_id === contactId ? { ...p, payment_records: newRecords, payment_log: newLog } : p
+      ));
+    }
+  }
+
+  async function cancelInstallmentPayment(contactId, index) {
+    const participant = participants.find(p => p.contact_id === contactId);
+    const existing = participant?.payment_records || [];
+    const rec = existing[index];
+    const newRecords = existing.map((r, i) => i === index ? { ...r, cancelled: true } : r);
+    const allCancelled = newRecords.every(r => r.cancelled);
+    const cancelMsg = `cancelou pagamento${rec?.amount != null ? ` de $${Number(rec.amount).toFixed(2)}` : ''}${rec?.date ? ` em ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}${allCancelled ? ' — revertido para Em Aberto' : ''}`;
+    const updateData = { payment_records: newRecords, payment_log: [...getParticipantLog(contactId), newLogEntry(cancelMsg)] };
+    if (allCancelled) updateData.payment_status = 'em aberto';
+    const { error } = await supabase
+      .from('event_participants')
+      .update(updateData)
+      .match({ event_id: eventId, contact_id: contactId });
+    if (!error) {
+      setParticipants(prev => prev.map(p =>
+        p.contact_id === contactId ? { ...p, ...updateData } : p
+      ));
+    }
+  }
+
+  async function confirmPayment(contactId) {
+    const today = new Date().toISOString().split('T')[0];
+    const p = participants.find(x => x.contact_id === contactId);
+    const amount = (p?.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+    const updateData = {
+      payment_status: 'pago',
+      payment_method: 'Câmbio',
+      payment_records: [{ amount, date: today, cancelled: false }],
+      installment_count: null,
+      payment_log: [...getParticipantLog(contactId), newLogEntry('confirmou comprovante — pago via Câmbio')],
+    };
+    const { error } = await supabase
+      .from('event_participants')
+      .update(updateData)
+      .match({ event_id: eventId, contact_id: contactId });
+    if (!error) {
+      setParticipants(prev => prev.map(pp =>
+        pp.contact_id === contactId ? { ...pp, ...updateData } : pp
+      ));
+    }
+  }
+
+  async function confirmPartialPayment(contactId, amount) {
+    const p = participants.find(x => x.contact_id === contactId);
+    const existing = p?.payment_records || [];
+    const today = new Date().toISOString().split('T')[0];
+    const newRecords = [...existing, { amount: parseFloat(amount), date: today, cancelled: false }];
+    const newLog = [...getParticipantLog(contactId), newLogEntry(`registrou pagamento parcial de $${Number(amount).toFixed(2)} via Câmbio`)];
+    const updateData = {
+      payment_status: 'parcelado',
+      payment_method: 'Câmbio',
+      payment_records: newRecords,
+      payment_log: newLog,
+    };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    setParticipants(prev => prev.map(pp => pp.contact_id === contactId ? { ...pp, ...updateData } : pp));
+    setConfirmPartialModal(null);
+  }
+
+  async function cancelConferirPayment(contactId) {
+    const participant = participants.find(p => p.contact_id === contactId);
+    const existingUrl = participant?.comprovante_url;
+    const logMsg = existingUrl
+      ? `cancelou comprovante — revertido para Em Aberto · ${existingUrl}`
+      : 'cancelou comprovante — revertido para Em Aberto';
+    const newLog = [...getParticipantLog(contactId), newLogEntry(logMsg)];
+    const updateData = { payment_status: 'em aberto', payment_method: null, comprovante_url: null, payment_log: newLog };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    setParticipants(prev => prev.map(pp => pp.contact_id === contactId ? { ...pp, ...updateData } : pp));
   }
 
   function parsePhone(full) {
@@ -952,6 +1168,7 @@ export default function EventDetail({ params }) {
       nome_completo: contact.nome_completo || '',
       ddi,
       phone: localPhone,
+      primeira_vez: contact.primeira_vez || false,
     });
   }
 
@@ -961,7 +1178,7 @@ export default function EventDetail({ params }) {
 
     if (contactId && !addingToEvent) {
       // Editing an existing participant's contact fields
-      const fields = { name: nickname, nickname, nome_completo, phone: fullPhone };
+      const fields = { name: nickname, nickname, nome_completo, phone: fullPhone, primeira_vez: contactEditModal.primeira_vez ?? false };
       const { error } = await supabase.from('contacts').update(fields).eq('id', contactId);
       if (!error) {
         setParticipants(prev => prev.map(p =>
@@ -984,9 +1201,11 @@ export default function EventDetail({ params }) {
         }
         return;
       }
+      const { contactId: cid, nickname: nick } = contactEditModal;
+      const enrollEntry = [newLogEntry(`adicionou ${nick} à cerimônia via admin`)];
       const { error } = await supabase
         .from('event_participants')
-        .insert([{ event_id: eventId, contact_id: contactId, status: 'intenção de ir', date1_confirmed: true, date2_confirmed: !!event.date2 }]);
+        .insert([{ event_id: eventId, contact_id: contactId, status: 'intenção de ir', date1_confirmed: true, date2_confirmed: !!event.date2, enrollment_log: enrollEntry }]);
       if (error) { alert('Erro ao adicionar: ' + error.message); return; }
       setContactEditModal(null);
       fetchEventData();
@@ -1002,13 +1221,14 @@ export default function EventDetail({ params }) {
       }
       const { data: newContact, error: cErr } = await supabase
         .from('contacts')
-        .insert([{ name: nickname, nickname, nome_completo, phone: fullPhone }])
+        .insert([{ name: nickname, nickname, nome_completo, phone: fullPhone, primeira_vez: true }])
         .select()
         .single();
       if (cErr) { alert('Erro ao criar contato: ' + cErr.message); return; }
+      const enrollEntry2 = [newLogEntry(`criou e adicionou ${nickname} à cerimônia via admin`)];
       const { error: pErr } = await supabase
         .from('event_participants')
-        .insert([{ event_id: eventId, contact_id: newContact.id, status: 'intenção de ir', date1_confirmed: true, date2_confirmed: !!event.date2 }]);
+        .insert([{ event_id: eventId, contact_id: newContact.id, status: 'intenção de ir', date1_confirmed: true, date2_confirmed: !!event.date2, enrollment_log: enrollEntry2 }]);
       if (pErr) { alert('Erro ao adicionar à cerimônia: ' + pErr.message); return; }
       setContactEditModal(null);
       fetchEventData();
@@ -1033,6 +1253,12 @@ export default function EventDetail({ params }) {
     router.push('/login');
   }
 
+  function fmtLog(entry) {
+    const d = new Date(entry.at);
+    const dt = d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    return `${dt} — ${entry.by} ${entry.msg}`;
+  }
+
   if (loading) return <div style={{ textAlign: 'center', padding: '5rem' }}>Carregando cerimônia...</div>;
   if (!event) return <div style={{ textAlign: 'center', padding: '5rem' }}>Cerimônia não encontrada.</div>;
 
@@ -1054,11 +1280,13 @@ export default function EventDetail({ params }) {
   const day1Active = activeParticipants.filter(p => p.date1_confirmed);
   const day1ConfirmadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
   const day1ReservadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
-  const day1Stats = { confirmados: day1ConfirmadosCount, reservados: day1ReservadosCount, total: day1ConfirmadosCount + day1ReservadosCount };
+  const day1PrimeiraVez = day1Active.filter(p => p.contacts?.primeira_vez).length;
+  const day1Stats = { confirmados: day1ConfirmadosCount, reservados: day1ReservadosCount, total: day1ConfirmadosCount + day1ReservadosCount, primeiraVez: day1PrimeiraVez };
   const day2Active = activeParticipants.filter(p => p.date2_confirmed);
   const day2ConfirmadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
   const day2ReservadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
-  const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2ConfirmadosCount + day2ReservadosCount };
+  const day2PrimeiraVez = day2Active.filter(p => p.contacts?.primeira_vez).length;
+  const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2ConfirmadosCount + day2ReservadosCount, primeiraVez: day2PrimeiraVez };
 
   const renderParticipantRow = (p, isSimplified = false) => {
     const hasRemedioAccess = p.status === 'intenção de ir' || p.status === 'Confirmado';
@@ -1073,7 +1301,12 @@ export default function EventDetail({ params }) {
       <div key={p.contact_id} style={{ ...s.row, opacity: rowOpacity }}>
         {/* Nome + nome completo */}
         <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer' }}>
-          <div style={{ ...s.travelerName, }}>{p.contacts?.nickname || p.contacts?.name}</div>
+          <div style={{ ...s.travelerName }}>
+            {p.contacts?.primeira_vez && (
+              <span title="Primeiro encontro" style={{ color: '#5d9470', fontFamily: "'IM Fell English', serif", fontSize: '13px', marginRight: '4px', userSelect: 'none', opacity: 0.8 }}>✦</span>
+            )}
+            {p.contacts?.nickname || p.contacts?.name}
+          </div>
           <div style={s.travelerPhone}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</div>
         </div>
 
@@ -1175,12 +1408,12 @@ export default function EventDetail({ params }) {
         {/* Pago */}
         {!isSimplified ? (() => {
           const ps = p.payment_status || 'em aberto';
-          const col = ps === 'pago' ? '#5d9470' : ps === 'a pagar no local' ? '#8a7a58' : '#9a9288';
-          const label = ps === 'pago' ? 'pago' : ps === 'a pagar no local' ? 'no local' : 'em aberto';
+          const col = ps === 'pago' ? '#5d9470' : ps === 'a pagar no local' ? '#8a7a58' : ps === 'parcelado' ? '#7a68a4' : ps === 'conferir pagamento' ? '#c4892a' : '#9a9288';
+          const label = ps === 'pago' ? 'pago' : ps === 'a pagar no local' ? 'no local' : ps === 'parcelado' ? 'parcelado' : ps === 'conferir pagamento' ? 'conferir' : 'em aberto';
           return (
             <div
               style={{ ...s.paidCell, cursor: 'pointer', opacity: cellOpacity, color: col }}
-              onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null })}
+              onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
             >
               <CoinIcon status={ps} />
               <span style={{ lineHeight: 1 }}>{label}</span>
@@ -1305,7 +1538,7 @@ export default function EventDetail({ params }) {
               const ps = p.payment_status || 'em aberto';
               return (
                 <span
-                  onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null })}
+                  onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
                   title="Pagamento"
                 >
@@ -1356,8 +1589,15 @@ export default function EventDetail({ params }) {
       <nav style={{ ...s.nav, padding: isMobile ? '0.6rem 1rem' : '0.75rem 2.5rem' }}>
         <a href="/" style={s.navBrand}>Journey<span style={{ color: '#5d9470' }}>.</span></a>
         <div style={{ ...s.navLinks, gap: isMobile ? '1rem' : '1.8rem' }}>
-          {!isMobile && <a href="/" style={s.navLink}><PersonIcon /> Pessoas</a>}
+          <a href="/" style={s.navLink}>{isMobile ? <PersonIcon /> : <><PersonIcon /> Pessoas</>}</a>
           <a href="/events" style={{ ...s.navLink, ...s.navLinkActive }}>{isMobile ? <PlantIcon /> : <><PlantIcon /> Cerimônias</>}</a>
+          <a href="/pagamentos" style={s.navLink}>{isMobile ? <CoinNavIcon /> : <><CoinNavIcon /> Pagamentos</>}</a>
+          <a href="/diario" style={s.navLink}>{isMobile ? <DiarioNavIcon /> : <><DiarioNavIcon /> Diário</>}</a>
+          <a href="/settings/users" style={{ ...s.navLink, color: '#6a6258' }} title="Gestão de usuários">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </a>
           <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>sair</button>
         </div>
       </nav>
@@ -1379,14 +1619,19 @@ export default function EventDetail({ params }) {
                     <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
                       <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
                       <span style={{ color: '#d0c8c0' }}>—</span>
-                      <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.total}</span>
-                      <span style={{ color: '#b8b0a8' }}>total</span>
+                      <span style={{ color: stats.confirmados > 0 ? '#3d6b52' : '#5a5048', fontWeight: 'bold' }}>{stats.confirmados}</span>
+                      <span style={{ color: '#b8b0a8' }}>confirmado</span>
                       <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
                       <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.reservados}</span>
                       <span style={{ color: '#b8b0a8' }}>reservado</span>
                       <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
-                      <span style={{ color: stats.confirmados > 0 ? '#3d6b52' : '#5a5048', fontWeight: 'bold' }}>{stats.confirmados}</span>
-                      <span style={{ color: '#b8b0a8' }}>confirmado</span>
+                      <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.total}</span>
+                      <span style={{ color: '#b8b0a8' }}>total</span>
+                      {stats.primeiraVez > 0 && (<>
+                        <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
+                        <span style={{ color: '#5d9470', fontFamily: "'IM Fell English', serif", fontSize: '11px' }}>✦</span>
+                        <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.primeiraVez}</span>
+                      </>)}
                     </div>
                   ))}
                 </div>
@@ -1409,14 +1654,19 @@ export default function EventDetail({ params }) {
                   <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
                     <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
                     <span style={{ color: '#d0c8c0' }}>—</span>
-                    <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.total}</span>
-                    <span style={{ color: '#b8b0a8' }}>total</span>
+                    <span style={{ color: stats.confirmados > 0 ? '#3d6b52' : '#5a5048', fontWeight: 'bold' }}>{stats.confirmados}</span>
+                    <span style={{ color: '#b8b0a8' }}>confirmado</span>
                     <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
                     <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.reservados}</span>
                     <span style={{ color: '#b8b0a8' }}>reservado</span>
                     <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
-                    <span style={{ color: stats.confirmados > 0 ? '#3d6b52' : '#5a5048', fontWeight: 'bold' }}>{stats.confirmados}</span>
-                    <span style={{ color: '#b8b0a8' }}>confirmado</span>
+                    <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.total}</span>
+                    <span style={{ color: '#b8b0a8' }}>total</span>
+                    {stats.primeiraVez > 0 && (<>
+                      <span style={{ color: '#d0c8c0', margin: '0 1px' }}>·</span>
+                      <span style={{ color: '#5d9470', fontFamily: "'IM Fell English', serif", fontSize: '11px' }}>✦</span>
+                      <span style={{ color: '#5a5048', fontWeight: 'bold' }}>{stats.primeiraVez}</span>
+                    </>)}
                   </div>
                 ))}
               </div>
@@ -1430,6 +1680,7 @@ export default function EventDetail({ params }) {
                 { title: 'Copiar link da ficha médica', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/ficha`); alert('Link da ficha copiado!'); }, icon: <PillIcon size={14} strokeColor="currentColor" /> },
                 { title: 'Copiar link de interesse', onClick: () => { navigator.clipboard.writeText(`${window.location.origin}/interesse/${event.id}`); alert('Link de interesse copiado!'); }, icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> },
                 { title: 'Pagamentos', onClick: () => setPaymentSummaryOpen(true), icon: <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', fontWeight: 'bold', lineHeight: 1 }}>$</span> },
+                { title: 'Diário', onClick: () => setDiaryOpen(true), icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg> },
               ].map((btn, i) => (
                 <button key={i} onClick={btn.onClick} title={btn.title} style={{ width: '30px', height: '30px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '0.5px dashed #b8b0a4', borderRadius: '2px', cursor: 'pointer', color: '#7a7268', padding: 0, flexShrink: 0 }}>
                   {btn.icon}
@@ -1652,7 +1903,7 @@ export default function EventDetail({ params }) {
                 </div>
                 <div style={{ fontSize: '10px', color: rIsOk ? '#5d9470' : '#c0392b', marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <PillIcon status={rIsOk ? 'ok' : rStatus === 'preenchido' ? 'attention' : 'pending'} />
-                  {rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Forçado OK' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento'}
+                  {rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Forçado OK' : rStatus === 'preenchido' ? 'Ficha preenchida — possui remédios' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento'}
                 </div>
               </div>
 
@@ -1680,7 +1931,7 @@ export default function EventDetail({ params }) {
                     if (!cleanPhone) { alert('Sem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${remedioModal.contactId}`;
                     const firstName = rContact?.name?.split(' ')[0] || '';
-                    const message = `Oi, ${firstName}! Por favor, preenche algumas informações sobre remédios que você está tomando.\n\nAlguns remédios interferem na experiência, ou mesmo inviabilizam ela.\n\nLink seguro para preenchimento: ${publicLink}`;
+                    const message = `Oi, ${firstName}!\nPor favor, preenche ainda hoje as informações do Formulário de Triagem, clicando no link abaixo:\n\n${publicLink}\n\nPor favor preenche ainda hoje pra dar tempo de a gente planejar sua experiência.`;
                     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
                     updateRemedioStatus(remedioModal.contactId, 'enviado');
                     setRemedioModal(null);
@@ -1718,13 +1969,16 @@ export default function EventDetail({ params }) {
       {paymentModal && (() => {
         const p = participants.find(x => x.contact_id === paymentModal.contactId);
         if (!p) return null;
-        const canSave = paymentModal.status !== 'pago' || !!paymentModal.method;
+        const canSave =
+          (paymentModal.status !== 'pago' || (!!paymentModal.method && !!paymentModal.paymentDate)) &&
+          (paymentModal.status !== 'parcelado' || !!paymentModal.installmentCount);
+        const discountVal = paymentModal.applyDiscount ? (paymentModal.discount !== '' ? paymentModal.discount : '50.00') : '';
         return (
           <div
             onClick={() => setPaymentModal(null)}
             style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
           >
-            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '320px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '340px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace", maxHeight: '90vh', overflowY: 'auto' }}>
 
               {/* Header */}
               <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2' }}>
@@ -1732,23 +1986,37 @@ export default function EventDetail({ params }) {
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>
                   {p.contacts?.nickname || p.contacts?.name}
                 </div>
-                {paymentModal.status === 'pago' && paymentModal.method && (
-                  <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '0.25rem' }}>via {paymentModal.method}</div>
-                )}
               </div>
 
               {/* Status */}
               <div style={{ padding: '1rem 1.5rem 0' }}>
                 <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Status</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {paymentModal.status === 'conferir pagamento' && (
+                    <div style={{ padding: '6px 10px', background: '#fef8f0', border: '0.5px solid #e8b87a', borderRadius: '2px', fontSize: '10px', color: '#c4892a', fontFamily: "'Courier Prime', monospace", marginBottom: '0.4rem', letterSpacing: '0.04em' }}>
+                      ? conferir pagamento — definido pelo viajante. Confirme na tela de pagamentos ou escolha outro status abaixo.
+                    </div>
+                  )}
                   {[
                     { val: 'em aberto', icon: '◎', color: '#b0a898' },
                     { val: 'pago', icon: '◉', color: '#5d9470' },
                     { val: 'a pagar no local', icon: '◐', color: '#8a7a58' },
+                    { val: 'parcelado', icon: '◑', color: '#7a68a4' },
                   ].map(opt => (
                     <button
                       key={opt.val}
-                      onClick={() => setPaymentModal(prev => ({ ...prev, status: opt.val, method: opt.val !== 'pago' ? null : prev.method }))}
+                      onClick={() => {
+                        if (opt.val === 'em aberto' && p.payment_status === 'pago') {
+                          const recs = p.payment_records || [];
+                          if (recs.length > 0) {
+                            const rec = recs[0];
+                            const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem data';
+                            const amtStr = rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '';
+                            if (!confirm(`Tem certeza que quer excluir o pagamento de ${amtStr} na data ${dateStr}?`)) return;
+                          }
+                        }
+                        setPaymentModal(prev => ({ ...prev, status: opt.val, method: opt.val !== 'pago' ? null : prev.method }));
+                      }}
                       style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: paymentModal.status === opt.val ? '#faf7f0' : 'transparent', border: paymentModal.status === opt.val ? '0.5px solid #b8b0a4' : '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: opt.color, textAlign: 'left', width: '100%' }}
                     >
                       <span style={{ fontSize: '14px' }}>{opt.icon}</span>
@@ -1759,33 +2027,112 @@ export default function EventDetail({ params }) {
                 </div>
               </div>
 
-              {/* Forma de pagamento — só quando "pago" */}
+              {/* Nº de parcelas — só quando "parcelado" */}
+              {paymentModal.status === 'parcelado' && (
+                <div style={{ padding: '1rem 1.5rem 0' }}>
+                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Parcelamento</div>
+                  <div style={{ maxWidth: '140px' }}>
+                    <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Nº de parcelas</div>
+                    <input
+                      type="number" min="2" max="99"
+                      value={paymentModal.installmentCount}
+                      onChange={e => setPaymentModal(prev => ({ ...prev, installmentCount: e.target.value }))}
+                      placeholder="Ex: 3"
+                      style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ marginTop: '0.6rem', fontSize: '9px', color: '#aaa49c', fontStyle: 'italic' }}>
+                    Para registrar pagamentos, acesse a tela de pagamentos.
+                  </div>
+                </div>
+              )}
+
+              {/* Forma + valor + data — só quando "pago" */}
               {paymentModal.status === 'pago' && (
                 <div style={{ padding: '1rem 1.5rem 0' }}>
                   <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Forma de pagamento</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                    {['Câmbio', 'PIX', 'Wise', 'Espécie recebido'].map(m => (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.8rem' }}>
+                    {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
                       <button
                         key={m}
-                        onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
+                        onClick={() => setPaymentModal(prev => ({ ...prev, method: m, applyDiscount: m === 'Espécie' ? prev.applyDiscount : false, discount: m === 'Espécie' ? (prev.discount || '50.00') : '' }))}
                         style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}
                       >
                         {m}
                       </button>
                     ))}
                   </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                    <div>
+                      <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Valor (USD)</div>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={paymentModal.paymentAmount}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, paymentAmount: e.target.value }))}
+                        placeholder="0.00"
+                        style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Data *</div>
+                      <input
+                        type="date"
+                        value={paymentModal.paymentDate}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, paymentDate: e.target.value }))}
+                        style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: `0.5px solid ${paymentModal.paymentDate ? '#c8c2b8' : '#e8a0a0'}`, borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                      />
+                    </div>
+                  </div>
+                  {/* Desconto — só quando pagou em espécie */}
+                  {paymentModal.method === 'Espécie' && (
+                    <div style={{ marginTop: '0.8rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!paymentModal.applyDiscount}
+                          onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Aplicar desconto?</span>
+                      </label>
+                      {paymentModal.applyDiscount && (
+                        <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '11px', color: '#7a7268' }}>USD</span>
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={paymentModal.discount}
+                            onChange={e => setPaymentModal(prev => ({ ...prev, discount: e.target.value }))}
+                            style={{ width: '90px', padding: '5px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Footer */}
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
-                {paymentModal.status !== 'pago' && event.payment_text && (
+                {paymentModal.status !== 'pago' && (
                   <button
                     onClick={() => {
                       const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
                       const ph = p.contacts?.phone?.replace(/\D/g, '');
                       if (!ph) { alert('Sem telefone cadastrado.'); return; }
-                      window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${event.payment_text}`)}`, '_blank');
+                      const paymentLink = `${window.location.origin}/pagamento/${paymentModal.contactId}`;
+                      const fmtDays = contactAllDays.map(d =>
+                        new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })
+                      );
+                      const daysStr = fmtDays.length === 0 ? '(data a confirmar)' :
+                        fmtDays.length === 1 ? `o dia ${fmtDays[0]}` :
+                        `os dias ${fmtDays.slice(0, -1).join(', ')} e ${fmtDays[fmtDays.length - 1]}`;
+                      const defaultTemplate = `[Link]\n\nOi [Nome]! Tudo bem?\n\nSua vaga está reservada para [dias_da_cerimônia].\n\nPara confirmar a vaga, vamos precisar das informações sobre pagamento, ok?\n\n*Opção 1 - Câmbio*\n\nClica aqui pra enviar uma mensagem para a Boa Viagem Câmbio pelo WhatsApp:\nhttps://wa.me/5581988664444\n\nDiga o valor em Dólar que quer enviar para Cerimônia Brasil e eles te dirão quanto custa em Real.\nManda um pix pra eles e depois nos encaminhe o comprovante através do link no final dessa mensagem!\n\n\n*Opção 2 — Pagamento em dólar no dia*\n\nVocê também pode levar o valor em cash, em dólar, no dia da cerimônia.\nSe preferir essa opção, me avise para eu deixar registrado e te lembrar no dia, através do link abaixo:\n\n[Link]`;
+                      const template = event.payment_text || defaultTemplate;
+                      const msg = template
+                        .replace(/\[Link\]/g, paymentLink)
+                        .replace(/\[Nome\]/g, firstName)
+                        .replace(/\[dias_da_cerimônia\]/g, daysStr);
+                      window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`, '_blank');
                     }}
                     style={{ width: '100%', padding: '8px', background: 'transparent', color: '#5d9470', border: '0.5px solid #9dcfb4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
                   >
@@ -1794,7 +2141,17 @@ export default function EventDetail({ params }) {
                 )}
                 <div style={{ display: 'flex', gap: '0.6rem' }}>
                   <button
-                    onClick={() => { if (!canSave) return; updatePayment(paymentModal.contactId, paymentModal.status, paymentModal.method); setPaymentModal(null); }}
+                    onClick={() => {
+                      if (!canSave) return;
+                      updatePayment(paymentModal.contactId, paymentModal.status, paymentModal.method, {
+                        installmentCount: paymentModal.installmentCount,
+                        discount: discountVal,
+                        applyDiscount: paymentModal.applyDiscount,
+                        paymentAmount: paymentModal.paymentAmount,
+                        paymentDate: paymentModal.paymentDate,
+                      });
+                      setPaymentModal(null);
+                    }}
                     disabled={!canSave}
                     style={{ flex: 1, padding: '8px', background: canSave ? '#3a3530' : '#d0cbc2', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: canSave ? 'pointer' : 'not-allowed', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}
                   >
@@ -1819,11 +2176,15 @@ export default function EventDetail({ params }) {
         const active = participants.filter(p => p.status !== 'desistiu');
         const groups = [
           { key: 'em aberto', label: 'Em aberto', icon: '◎', color: '#b0a898' },
+          { key: 'conferir pagamento', label: 'Conferir Pagamento', icon: '?', color: '#c4892a' },
           { key: 'a pagar no local', label: 'A pagar no local', icon: '◐', color: '#8a7a58' },
+          { key: 'parcelado', label: 'Parcelado', icon: '◑', color: '#7a68a4' },
           { key: 'pago', label: 'Pago', icon: '◉', color: '#5d9470' },
         ];
         const totalPago = active.filter(p => p.payment_status === 'pago').length;
         const totalNoLocal = active.filter(p => p.payment_status === 'a pagar no local').length;
+        const totalParcelado = active.filter(p => p.payment_status === 'parcelado').length;
+        const totalConferir = active.filter(p => p.payment_status === 'conferir pagamento').length;
         const totalAberto = active.filter(p => !p.payment_status || p.payment_status === 'em aberto').length;
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: '#f7f4ee', overflowY: 'auto', fontFamily: "'Courier Prime', monospace" }}>
@@ -1837,7 +2198,11 @@ export default function EventDetail({ params }) {
                 <div style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.06em' }}>
                   <span style={{ color: '#5d9470' }}>◉ {totalPago}</span>
                   {' · '}
+                  <span style={{ color: '#7a68a4' }}>◑ {totalParcelado}</span>
+                  {' · '}
                   <span style={{ color: '#8a7a58' }}>◐ {totalNoLocal}</span>
+                  {' · '}
+                  <span style={{ color: '#c4892a' }}>? {totalConferir}</span>
                   {' · '}
                   <span style={{ color: '#b0a898' }}>◎ {totalAberto}</span>
                 </div>
@@ -1863,20 +2228,236 @@ export default function EventDetail({ params }) {
                     {group.length === 0 ? (
                       <div style={{ fontSize: '10px', color: '#c0b8b0', fontStyle: 'italic', padding: '0.4rem 0' }}>nenhum</div>
                     ) : (
-                      group.map(p => (
-                        <div
-                          key={p.contact_id}
-                          onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null })}
-                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', marginBottom: '4px', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer' }}
-                        >
-                          <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
-                            {p.contacts?.nickname || p.contacts?.name}
-                          </span>
-                          {key === 'pago' && p.payment_method && (
-                            <span style={{ fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em' }}>via {p.payment_method}</span>
-                          )}
-                        </div>
-                      ))
+                      group.map(p => {
+                        const records = p.payment_records || [];
+                        const isParcelado = key === 'parcelado';
+                        const isPago = key === 'pago';
+                        const isConferirGroup = key === 'conferir pagamento';
+                        const isRegistering = registerInstallment?.contactId === p.contact_id;
+                        const expectedAmount = crossCeremonyExpected[p.contact_id] !== undefined
+                          ? crossCeremonyExpected[p.contact_id]
+                          : (p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+                        const otherEvents = otherEventsMap[p.contact_id] || [];
+                        const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
+                        const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar) : null;
+
+                        if (isConferirGroup) {
+                          return (
+                            <div key={p.contact_id} style={{ marginBottom: '12px', border: '0.5px solid #e8b87a', borderRadius: '2px', background: '#fefaf3' }}>
+                              {/* Header */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', borderBottom: '0.5px dashed #e8b87a', cursor: 'pointer' }}
+                                onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                              >
+                                <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
+                                  {p.contacts?.nickname || p.contacts?.name}
+                                </span>
+                                {expectedAmount != null && (
+                                  <span style={{ fontSize: '10px', color: '#c4892a', fontFamily: "'Courier Prime', monospace" }}>
+                                    $ {Number(expectedAmount).toFixed(2)} esperado
+                                  </span>
+                                )}
+                              </div>
+                              {/* Multi-ceremony note */}
+                              {otherEvents.length > 0 && (
+                                <div style={{ padding: '0.4rem 1rem', background: '#fef3e2', fontSize: '9px', color: '#a06030', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.04em', borderBottom: '0.5px dashed #e8b87a' }}>
+                                  ⚠ também em: {otherEvents.join(', ')}
+                                </div>
+                              )}
+                              {/* Comprovante */}
+                              {p.comprovante_url && (
+                                <div style={{ padding: '0.4rem 1rem', borderBottom: '0.5px dashed #e8b87a' }}>
+                                  <a href={p.comprovante_url} target="_blank" rel="noreferrer"
+                                    style={{ fontSize: '10px', color: '#5d9470', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.04em', textDecoration: 'underline' }}
+                                    onClick={e => e.stopPropagation()}
+                                  >
+                                    📎 ver comprovante
+                                  </a>
+                                </div>
+                              )}
+                              {/* Observation */}
+                              {p.payment_observation && (
+                                <div style={{ padding: '0.4rem 1rem', borderBottom: '0.5px dashed #e8b87a', fontSize: '10px', color: '#6a5a40', fontFamily: "'Courier Prime', monospace", fontStyle: 'italic', lineHeight: 1.5 }}>
+                                  "{p.payment_observation}"
+                                </div>
+                              )}
+                              {/* Ações conferir */}
+                              <div style={{ padding: '0.6rem 1rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); confirmPayment(p.contact_id); }}
+                                    style={{ padding: '6px 10px', background: '#5d9470', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}
+                                  >✓ Câmbio Total</button>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setConfirmPartialModal({ contactId: p.contact_id, amount: '' }); }}
+                                    style={{ padding: '6px 10px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}
+                                  >◑ Parcial</button>
+                                  <button
+                                    onClick={e => { e.stopPropagation(); if (confirm('Cancelar comprovante e reverter para Em Aberto?')) cancelConferirPayment(p.contact_id); }}
+                                    style={{ padding: '6px 10px', background: 'transparent', color: '#c0392b', border: '0.5px solid #e8b0b0', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}
+                                  >✕ Cancelar</button>
+                                </div>
+                                {confirmPartialModal?.contactId === p.contact_id && (
+                                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', padding: '6px 0' }}>
+                                    <input
+                                      type="number" min="0" step="0.01"
+                                      value={confirmPartialModal.amount}
+                                      onChange={e => setConfirmPartialModal(prev => ({ ...prev, amount: e.target.value }))}
+                                      placeholder="Valor recebido (USD)"
+                                      autoFocus
+                                      style={{ flex: 1, padding: '5px 8px', background: '#faf7f0', border: '0.5px solid #b8a8d8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }}
+                                    />
+                                    <button
+                                      onClick={e => { e.stopPropagation(); if (confirmPartialModal.amount) confirmPartialPayment(p.contact_id, confirmPartialModal.amount); }}
+                                      style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}
+                                    >ok</button>
+                                    <button
+                                      onClick={e => { e.stopPropagation(); setConfirmPartialModal(null); }}
+                                      style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}
+                                    >×</button>
+                                  </div>
+                                )}
+                                {(p.payment_log?.length > 0) && (
+                                  <LogFooter log={p.payment_log} fmtLog={fmtLog}
+                                    onOpenModal={() => {
+                                      const combined = [
+                                        ...(p.enrollment_log || []).map(e => ({ ...e, _type: 'inscrição' })),
+                                        ...(p.payment_log || []).map(e => ({ ...e, _type: 'pagamento' })),
+                                      ].sort((a, b) => new Date(a.at) - new Date(b.at));
+                                      setLogModal({ name: p.contacts?.nickname || p.contacts?.name, log: combined });
+                                    }}
+                                    onRevert={() => revertPayment(p.contact_id)}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={p.contact_id} style={{ marginBottom: '10px' }}>
+                            {/* Nome + botão editar status */}
+                            <div
+                              onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer' }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
+                                  {p.contacts?.nickname || p.contacts?.name}
+                                </span>
+                                {p.payment_observation && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setObsModal({ name: p.contacts?.nickname || p.contacts?.name, text: p.payment_observation }); }}
+                                    title="Ver observação"
+                                    style={{ background: 'none', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer', padding: '1px 5px', fontFamily: "'Courier Prime', monospace", fontSize: '8px', letterSpacing: '0.08em', color: '#9a9288', textTransform: 'uppercase', lineHeight: 1.6 }}
+                                  >
+                                    obs
+                                  </button>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                {!isPago && owed != null && (
+                                  <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>
+                                    $ {Number(owed).toFixed(2)}
+                                  </span>
+                                )}
+                                {isParcelado && p.installment_count > 0 && (
+                                  <span style={{ fontSize: '9px', color: '#7a68a4', letterSpacing: '0.04em' }}>
+                                    {records.filter(r => !r.cancelled).length}/{p.installment_count} parcelas
+                                  </span>
+                                )}
+                                {isPago && p.payment_method && (
+                                  <span style={{ fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em' }}>via {p.payment_method}</span>
+                                )}
+                                {isPago && p.discount != null && (
+                                  <span style={{ fontSize: '9px', color: '#8a7a58' }}>desc. $ {Number(p.discount).toFixed(2)}</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Registros individuais de pagamento */}
+                            {(isParcelado || isPago) && records.map((rec, i) => (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#f5f0f8', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
+                                <span style={{ flex: 1, fontSize: '11px', color: rec.cancelled ? '#c0b8b0' : '#3a3530', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace" }}>
+                                  {rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '—'}
+                                  {rec.date ? ` · ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
+                                  {rec.cancelled ? ' (cancelado)' : ''}
+                                </span>
+                                {!rec.cancelled && (isParcelado || isPago) && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); cancelInstallmentPayment(p.contact_id, i); }}
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}
+                                    title="Cancelar pagamento"
+                                  >×</button>
+                                )}
+                              </div>
+                            ))}
+
+                            {/* Botão registrar parcela / form inline */}
+                            {isParcelado && (
+                              <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', background: '#fdfbf7' }}>
+                                {isRegistering ? (
+                                  <div style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                                    <div>
+                                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
+                                      <input
+                                        type="number" min="0" step="0.01"
+                                        value={registerInstallment.amount}
+                                        onChange={e => setRegisterInstallment(prev => ({ ...prev, amount: e.target.value }))}
+                                        placeholder="0.00"
+                                        autoFocus
+                                        style={{ width: '80px', padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
+                                      <input
+                                        type="date"
+                                        value={registerInstallment.date}
+                                        onChange={e => setRegisterInstallment(prev => ({ ...prev, date: e.target.value }))}
+                                        style={{ padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }}
+                                      />
+                                    </div>
+                                    <button
+                                      onClick={() => {
+                                        if (!registerInstallment.amount || !registerInstallment.date) return;
+                                        addInstallmentPayment(p.contact_id, registerInstallment.amount, registerInstallment.date);
+                                        setRegisterInstallment(null);
+                                      }}
+                                      style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}
+                                    >ok</button>
+                                    <button
+                                      onClick={() => setRegisterInstallment(null)}
+                                      style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}
+                                    >×</button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setRegisterInstallment({ contactId: p.contact_id, amount: '', date: '' }); }}
+                                    style={{ width: '100%', padding: '0.45rem 1rem', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7a68a4', textAlign: 'left' }}
+                                  >
+                                    + registrar parcela
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {/* Log footer */}
+                            {(p.payment_log?.length > 0) && (
+                              <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: isParcelado ? '0' : '0 0 2px 2px', padding: '0.35rem 1rem' }}>
+                                <LogFooter log={p.payment_log} fmtLog={fmtLog}
+                                  onOpenModal={() => {
+                                    const combined = [
+                                      ...(p.enrollment_log || []).map(e => ({ ...e, _type: 'inscrição' })),
+                                      ...(p.payment_log || []).map(e => ({ ...e, _type: 'pagamento' })),
+                                    ].sort((a, b) => new Date(a.at) - new Date(b.at));
+                                    setLogModal({ name: p.contacts?.nickname || p.contacts?.name, log: combined });
+                                  }}
+                                  onRevert={() => revertPayment(p.contact_id)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 );
@@ -1885,6 +2466,164 @@ export default function EventDetail({ params }) {
           </div>
         );
       })()}
+
+      {diaryOpen && (() => {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+        const fiveDaysAgoStr = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
+
+        const allEntries = [];
+        participants.forEach(p => {
+          const name = p.contacts?.nickname || p.contacts?.name || '—';
+          (p.enrollment_log || []).forEach(e => allEntries.push({ ...e, _name: name, _type: 'inscrição' }));
+          (p.payment_log || []).forEach(e => allEntries.push({ ...e, _name: name, _type: 'pagamento' }));
+        });
+        allEntries.sort((a, b) => new Date(b.at) - new Date(a.at));
+
+        let filtered;
+        if (diaryDateFilter === 'all') {
+          filtered = allEntries;
+        } else if (diaryDateFilter === 'today') {
+          filtered = allEntries.filter(e => e.at.startsWith(todayStr));
+        } else if (diaryDateFilter === 'yesterday') {
+          filtered = allEntries.filter(e => e.at.startsWith(yesterdayStr));
+        } else if (diaryDateFilter === '5days') {
+          filtered = allEntries.filter(e => e.at.slice(0, 10) >= fiveDaysAgoStr);
+        } else {
+          filtered = allEntries.filter(e => {
+            const d = e.at.slice(0, 10);
+            return (!diaryRangeFrom || d >= diaryRangeFrom) && (!diaryRangeTo || d <= diaryRangeTo);
+          });
+        }
+
+        const modeFilters = [
+          { key: 'today', label: 'Hoje' },
+          { key: 'yesterday', label: 'Ontem' },
+          { key: '5days', label: 'Últimos 5 dias' },
+          { key: 'all', label: 'Tudo' },
+          { key: 'range', label: 'Período' },
+        ];
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: '#f7f4ee', overflowY: 'auto', fontFamily: "'Courier Prime', monospace" }}>
+            <div style={{ position: 'sticky', top: 0, background: '#3a3530', zIndex: 1 }}>
+              <div style={{ padding: '0.75rem 2rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '18px', color: '#f7f4ee', fontWeight: 400 }}>Diário</div>
+                  <div style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.08em', marginTop: '1px' }}>{event.name}</div>
+                </div>
+                <button onClick={() => setDiaryOpen(false)} style={{ background: 'none', border: '0.5px dashed #5a5248', borderRadius: '2px', color: '#b0a898', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '4px 10px' }}>
+                  ← fechar
+                </button>
+              </div>
+              <div style={{ padding: '0 2rem 0.75rem', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                {modeFilters.map(f => (
+                  <button key={f.key} onClick={() => setDiaryDateFilter(f.key)} style={{ padding: '3px 9px', borderRadius: '2px', cursor: 'pointer', border: diaryDateFilter === f.key ? '0.5px solid #f7f4ee' : '0.5px dashed #5a5248', background: diaryDateFilter === f.key ? '#f7f4ee' : 'transparent', color: diaryDateFilter === f.key ? '#3a3530' : '#b0a898', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                    {f.label}
+                  </button>
+                ))}
+                {diaryDateFilter === 'range' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginLeft: '4px' }}>
+                    <span style={{ fontSize: '9px', color: '#b0a898', letterSpacing: '0.08em' }}>de</span>
+                    <input
+                      type="date"
+                      value={diaryRangeFrom}
+                      onChange={e => setDiaryRangeFrom(e.target.value)}
+                      style={{ padding: '3px 6px', background: 'transparent', border: '0.5px dashed #5a5248', borderRadius: '2px', color: '#f7f4ee', fontFamily: "'Courier Prime', monospace", fontSize: '9px', colorScheme: 'dark' }}
+                    />
+                    <span style={{ fontSize: '9px', color: '#b0a898', letterSpacing: '0.08em' }}>até</span>
+                    <input
+                      type="date"
+                      value={diaryRangeTo}
+                      onChange={e => setDiaryRangeTo(e.target.value)}
+                      style={{ padding: '3px 6px', background: 'transparent', border: '0.5px dashed #5a5248', borderRadius: '2px', color: '#f7f4ee', fontFamily: "'Courier Prime', monospace", fontSize: '9px', colorScheme: 'dark' }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto' }}>
+              {filtered.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '4rem 0', fontSize: '12px', color: '#aaa49c', fontStyle: 'italic' }}>
+                  nenhum registro para este período.
+                </div>
+              ) : (
+                filtered.map((entry, i) => {
+                  const dt = new Date(entry.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: '12px', padding: '0.65rem 0', borderBottom: '0.5px dashed #ddd9cf', alignItems: 'flex-start' }}>
+                      <div style={{ width: '4px', flexShrink: 0, borderRadius: '2px', background: entry._type === 'pagamento' ? '#7a68a4' : '#5d9470', alignSelf: 'stretch', marginTop: '2px', minHeight: '16px' }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '2px' }}>
+                          <span style={{ fontSize: '9px', color: '#aaa49c', letterSpacing: '0.04em' }}>{dt}</span>
+                          <span style={{ fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase', color: entry._type === 'pagamento' ? '#7a68a4' : '#5d9470', background: entry._type === 'pagamento' ? '#f0eef8' : '#eef5f0', padding: '1px 5px', borderRadius: '2px' }}>{entry._type}</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#3a3530' }}>
+                          <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '14px' }}>{entry._name}</span>
+                          {' · '}
+                          <span style={{ fontWeight: 600 }}>{entry.by}</span>
+                          {' '}
+                          {entry.msg}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal de Histórico de Pagamentos */}
+      {logModal && (
+        <div onClick={() => setLogModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '420px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace", maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '1rem 1.5rem 0.8rem', borderBottom: '0.5px solid #d0cbc2', flexShrink: 0 }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.2rem' }}>Histórico</div>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '18px', color: '#3a3530' }}>{logModal.name}</div>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1, padding: '0.8rem 1.5rem' }}>
+              {[...logModal.log].reverse().map((entry, i) => (
+                <div key={i} style={{ display: 'flex', gap: '10px', padding: '0.5rem 0', borderBottom: i < logModal.log.length - 1 ? '0.5px dashed #e0dbd4' : 'none' }}>
+                  <div style={{ width: '4px', flexShrink: 0, borderRadius: '2px', background: i === 0 ? '#5d9470' : '#d0cbc2', alignSelf: 'stretch', marginTop: '2px' }} />
+                  <div>
+                    <div style={{ fontSize: '9px', color: '#aaa49c', letterSpacing: '0.04em', marginBottom: '2px' }}>
+                      {new Date(entry.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' })}
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#3a3530' }}>
+                      <span style={{ fontWeight: 600 }}>{entry.by}</span> {entry.msg}
+                      {entry._type && <span style={{ marginLeft: '6px', fontSize: '8px', letterSpacing: '0.08em', textTransform: 'uppercase', color: entry._type === 'pagamento' ? '#7a68a4' : '#5d9470', background: entry._type === 'pagamento' ? '#f0eef8' : '#eef5f0', padding: '1px 5px', borderRadius: '2px' }}>{entry._type}</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: '0.8rem 1.5rem', borderTop: '0.5px solid #d0cbc2', flexShrink: 0 }}>
+              <button onClick={() => setLogModal(null)} style={{ width: '100%', padding: '8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Observação */}
+      {obsModal && (
+        <div onClick={() => setObsModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '340px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+            <div style={{ padding: '1rem 1.5rem 0.8rem', borderBottom: '0.5px solid #d0cbc2' }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.2rem' }}>Observação</div>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '18px', color: '#3a3530' }}>{obsModal.name}</div>
+            </div>
+            <div style={{ padding: '1rem 1.5rem', fontSize: '12px', color: '#3a3530', lineHeight: 1.7, fontStyle: 'italic' }}>
+              "{obsModal.text}"
+            </div>
+            <div style={{ padding: '0 1.5rem 1rem' }}>
+              <button onClick={() => setObsModal(null)} style={{ width: '100%', padding: '8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Edição do Contato */}
       {contactEditModal && (
@@ -1974,6 +2713,21 @@ export default function EventDetail({ params }) {
                 </div>
               </div>
             </div>
+            {contactEditModal.contactId && !contactEditModal.addingToEvent && (
+              <div style={{ padding: '0 1.5rem 0.8rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={contactEditModal.primeira_vez || false}
+                    onChange={e => setContactEditModal(prev => ({ ...prev, primeira_vez: e.target.checked }))}
+                    style={{ accentColor: '#5d9470', width: '14px', height: '14px' }}
+                  />
+                  <span style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7a7268', fontFamily: "'Courier Prime', monospace" }}>
+                    Primeira vez
+                  </span>
+                </label>
+              </div>
+            )}
             <div style={{ padding: '0.5rem 1.5rem 1.2rem', display: 'flex', gap: '0.6rem' }}>
               <button
                 onClick={saveContact}
@@ -1996,136 +2750,102 @@ export default function EventDetail({ params }) {
       {activeFichaContact && (() => {
         const mfd = activeFichaContact.medical_form_data || {};
         const hasMfd = Object.keys(mfd).length > 0;
+        const sL = { fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' };
 
-        const attentionItems = [];
-        if (hasMfd) {
-          if (mfd.sec2_leitura_nao_li) attentionItems.push({ label: 'Documento de Preparação', text: 'Comprometido a ler antes da cerimônia (ainda não havia lido)' });
-          if (mfd.sec3_historico_nao_informado || mfd.sec3_historico_obs) attentionItems.push({ label: 'Histórico Psiquiátrico', text: mfd.sec3_historico_obs || 'Informou ter histórico adicional (sem detalhes no campo)' });
-          if (mfd.sec4_obs) attentionItems.push({ label: 'Saúde Física', text: mfd.sec4_obs });
-          if (mfd.sec5_experiencias_recentes || mfd.sec5_psicoativas_obs) attentionItems.push({ label: 'Uso Recente de Substâncias', text: mfd.sec5_psicoativas_obs || 'Declarou uso recente de substâncias psicoativas' });
-          if (mfd.sec6_duvidas) attentionItems.push({ label: 'Dúvidas com a Equipe', text: 'Viajante declarou ter dúvidas a tirar com a equipe' });
-        }
-
-        const sectionLabel = { fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' };
+        const itemOk = (item) => item.pos ? !!mfd[item.k] : !mfd[item.k];
+        const hasConcerns = hasMfd && FICHA_SECTIONS.some(s => s.items.some(it => !itemOk(it)));
 
         return (
           <div onClick={() => setActiveFichaContact(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: '2rem 1rem', overflowY: 'auto' }}>
-            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '520px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', display: 'flex', flexDirection: 'column' }}>
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '560px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', display: 'flex', flexDirection: 'column' }}>
 
-              {/* Header fixo */}
+              {/* Header */}
               <div style={{ padding: '1.5rem 2rem 1rem', borderBottom: '0.5px solid #d0cbc2', position: 'sticky', top: 0, background: '#fdfbf7', zIndex: 1 }}>
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '11px', letterSpacing: '0.08em', color: '#aaa49c', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Ficha Médica</div>
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '26px', fontWeight: 400, color: '#3a3530', lineHeight: 1.1 }}>{activeFichaContact.name}</div>
+                {hasConcerns && <div style={{ marginTop: '0.5rem', fontSize: '10px', color: '#b45309', fontWeight: 'bold' }}>⚠ Itens em atenção marcados em laranja abaixo</div>}
               </div>
 
-              {/* Corpo com scroll */}
-              <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.4rem', overflowY: 'auto' }}>
+              {/* Body */}
+              <div style={{ padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', overflowY: 'auto' }}>
 
-                {/* Progresso */}
-                <div>
-                  <div style={sectionLabel}>Progresso do Preenchimento</div>
-                  <div style={{ padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px' }}>
-                    {activeFichaContact.medical_form_step >= 6 ? (
-                      <span style={{ color: '#5d9470', fontWeight: 'bold' }}>✓ 100% Concluído e Assinado</span>
-                    ) : activeFichaContact.medical_form_step > 0 ? (
-                      <span style={{ color: '#8a7a58', fontWeight: 'bold' }}>⏳ Incompleto — parou no passo {activeFichaContact.medical_form_step} de 6</span>
-                    ) : (
-                      <span style={{ color: '#9a9288', fontWeight: 'bold' }}>✕ Não iniciou o preenchimento</span>
-                    )}
-                  </div>
+                {/* Status */}
+                <div style={{ padding: '0.6rem 0.9rem', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontSize: '10px' }}>
+                  {activeFichaContact.remedio === 'não' || activeFichaContact.remedio === 'em andamento'
+                    ? <span style={{ color: '#5d9470', fontWeight: 'bold' }}>✓ Formulário concluído e assinado</span>
+                    : activeFichaContact.medical_form_step > 0
+                      ? <span style={{ color: '#8a7a58', fontWeight: 'bold' }}>⏳ Incompleto — parou no passo {activeFichaContact.medical_form_step} de 8</span>
+                      : <span style={{ color: '#9a9288', fontWeight: 'bold' }}>✕ Não iniciou o preenchimento</span>
+                  }
                 </div>
 
-                {/* Remédios */}
-                <div>
-                  <div style={sectionLabel}>Remédios Informados</div>
-                  {activeFichaContact.remedio === 'não informado' ? (
-                    <div style={{ padding: '0.6rem 0.9rem', background: '#fff9e6', border: '0.5px solid #ffeeba', borderRadius: '2px', color: '#856404', fontStyle: 'italic' }}>
-                      ⚠️ Ficha médica ainda não foi preenchida.
+                {/* Dados pessoais */}
+                {hasMfd && (mfd.nome_completo || mfd.data_nascimento || mfd.telefone) && (
+                  <div>
+                    <div style={sL}>Dados Pessoais</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 1rem', fontSize: '10px', padding: '0.6rem 0.9rem', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px' }}>
+                      {mfd.nome_completo && <div><span style={{ color: '#aaa49c' }}>Nome: </span>{mfd.nome_completo}</div>}
+                      {mfd.data_nascimento && <div><span style={{ color: '#aaa49c' }}>Nascimento: </span>{mfd.data_nascimento}</div>}
+                      {mfd.telefone && <div><span style={{ color: '#aaa49c' }}>Tel: </span>{mfd.telefone_ddi || ''} {mfd.telefone}</div>}
+                      {mfd.contato_emergencia && <div><span style={{ color: '#aaa49c' }}>Emergência: </span>{mfd.contato_emergencia}</div>}
                     </div>
-                  ) : activeFichaContact.medications_list?.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  </div>
+                )}
+
+                {/* Remédios informados */}
+                <div>
+                  <div style={sL}>Remédios Informados</div>
+                  {activeFichaContact.medications_list?.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                       {activeFichaContact.medications_list.map((med, idx) => (
-                        <div key={idx} style={{ padding: '0.5rem 0.8rem', background: '#faf7f0', borderRadius: '2px', borderLeft: '3px solid #7a7268' }}>
+                        <div key={idx} style={{ padding: '0.45rem 0.8rem', background: '#faf7f0', borderRadius: '2px', borderLeft: '3px solid #7a7268' }}>
                           <div style={{ fontWeight: 'bold' }}>{med.name}</div>
-                          {(med.dosage || med.frequency) && (
-                            <div style={{ fontSize: '9px', color: '#9a9288', marginTop: '0.2rem' }}>
-                              {med.dosage || ''}{med.dosage && med.frequency ? ' · ' : ''}{med.frequency || ''}
-                            </div>
-                          )}
+                          <div style={{ fontSize: '9px', color: '#9a9288', marginTop: '0.15rem' }}>
+                            {[med.dosage, med.frequency, med.last_use ? `último uso: ${med.last_use}` : ''].filter(Boolean).join(' · ')}
+                          </div>
                         </div>
                       ))}
+                      {mfd.sec4c_outros && <div style={{ padding: '0.45rem 0.8rem', background: '#faf7f0', borderRadius: '2px', borderLeft: '3px solid #b8b0a4', fontSize: '10px', color: '#5a4a3a' }}><span style={{ color: '#aaa49c' }}>Outros: </span>{mfd.sec4c_outros}</div>}
                     </div>
                   ) : (
-                    <div style={{ padding: '0.6rem 0.9rem', background: '#faf7f0', borderRadius: '2px', borderLeft: '3px solid #7a7268', color: '#5a605c' }}>
-                      Nenhum remédio de uso contínuo (declarou não tomar).
-                    </div>
+                    <div style={{ padding: '0.6rem 0.9rem', background: '#faf7f0', borderRadius: '2px', color: '#7a7268', fontSize: '10px' }}>Nenhum remédio informado.</div>
                   )}
                 </div>
 
-                {/* Ítens em Atenção */}
-                {attentionItems.length > 0 && (
-                  <div>
-                    <div style={{ ...sectionLabel, color: '#a07030' }}>Ítens em Atenção</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {attentionItems.map((item, idx) => (
-                        <div key={idx} style={{ padding: '0.6rem 0.9rem', background: '#fffbf0', border: '0.5px solid #e8d090', borderRadius: '2px', borderLeft: '3px solid #c89030' }}>
-                          <div style={{ fontWeight: 'bold', color: '#7a5820', marginBottom: '0.2rem', fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>{item.label}</div>
-                          <div style={{ color: '#5a4010', lineHeight: 1.5 }}>{item.text}</div>
-                        </div>
-                      ))}
+                {/* Declarações por seção */}
+                {hasMfd && FICHA_SECTIONS.map((sec, si) => {
+                  const concerns = sec.items.filter(it => !itemOk(it));
+                  return (
+                    <div key={si}>
+                      <div style={{ ...sL, color: concerns.length > 0 ? '#b45309' : '#aaa49c' }}>{sec.title}{concerns.length > 0 ? ` — ${concerns.length} atenção` : ''}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {sec.items.map((it, ii) => {
+                          const ok = itemOk(it);
+                          return (
+                            <div key={ii} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', padding: '0.4rem 0.7rem', background: ok ? 'transparent' : '#fff8f0', border: `0.5px solid ${ok ? '#e8e2d8' : '#e8c080'}`, borderRadius: '2px', borderLeft: `3px solid ${ok ? '#c8c2b8' : '#d4821a'}` }}>
+                              <span style={{ flexShrink: 0, color: ok ? '#7a9e85' : '#d4821a', fontWeight: 'bold', fontSize: '12px', lineHeight: 1.2 }}>{ok ? '✓' : '⚠'}</span>
+                              <span style={{ fontSize: '10px', lineHeight: 1.5, color: ok ? '#5a5048' : '#7a3d00' }}>{it.t}</span>
+                            </div>
+                          );
+                        })}
+                        {/* Extra text fields */}
+                        {sec.items.find(it => it.k === 'sec2_historico') && mfd.sec2_historico_obs && (
+                          <div style={{ padding: '0.4rem 0.7rem', background: '#fff8f0', border: '0.5px solid #e8c080', borderRadius: '2px', fontSize: '10px', color: '#7a3d00' }}>
+                            <span style={{ fontWeight: 'bold' }}>Histórico informado: </span>{mfd.sec2_historico_obs}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })}
 
-                {/* Observações */}
-                {activeFichaContact.observations && (
+                {/* Assinatura */}
+                {mfd.assinatura && (
                   <div>
-                    <div style={sectionLabel}>Observações / Terapias Alternativas</div>
-                    <p style={{ margin: 0, color: '#555', whiteSpace: 'pre-wrap', lineHeight: 1.6, padding: '0.6rem 0.9rem', background: '#faf7f0', border: '0.5px dashed #c8c2b8', borderRadius: '2px' }}>
-                      {activeFichaContact.observations}
-                    </p>
-                  </div>
-                )}
-
-                {/* Declarações */}
-                {hasMfd && (
-                  <div>
-                    <div style={sectionLabel}>Declarações Respondidas</div>
-                    <div style={{ border: '0.5px dashed #c8c2b8', borderRadius: '2px', padding: '0.8rem', background: '#fff', display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
-
-                      <div style={{ fontSize: '10px' }}>
-                        <div style={{ fontWeight: 'bold', color: '#7a7268', borderBottom: '0.5px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Declaração Inicial</div>
-                        <div>• Maioridade/Capacidade: {mfd.sec2_maioridade ? 'Sim ✓' : 'Não ✕'}</div>
-                        <div>• Participação Voluntária: {mfd.sec2_voluntaria ? 'Sim ✓' : 'Não ✕'}</div>
-                        <div>• Doc. Preparação: {mfd.sec2_leitura ? 'Lido ✓' : mfd.sec2_leitura_nao_li ? 'Comprometido a ler ⚠️' : 'Não ✕'}</div>
-                      </div>
-
-                      <div style={{ fontSize: '10px' }}>
-                        <div style={{ fontWeight: 'bold', color: '#7a7268', borderBottom: '0.5px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Saúde Mental</div>
-                        <div>• Esquizofrenia/Psicose/Bipolaridade: {mfd.sec3_esquizofrenia ? 'Ausente ✓' : 'Ausência não confirmada ✕'}</div>
-                        <div>• Histórico Familiar Psicose: {mfd.sec3_psicose_familiar ? 'Ausente ✓' : 'Ausência não confirmada ✕'}</div>
-                        <div>• Ideação Suicida: {mfd.sec3_ideacao ? 'Ausente ✓' : 'Ausência não confirmada ✕'}</div>
-                      </div>
-
-                      <div style={{ fontSize: '10px' }}>
-                        <div style={{ fontWeight: 'bold', color: '#7a7268', borderBottom: '0.5px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Saúde Física</div>
-                        <div>• Doenças Cardiovasculares: {mfd.sec4_cardio ? 'Ausente ✓' : 'Ausência não confirmada ✕'}</div>
-                        <div>• Distúrbios Neurológicos: {mfd.sec4_neuro ? 'Ausente ✓' : 'Ausência não confirmada ✕'}</div>
-                      </div>
-
-                      <div style={{ fontSize: '10px' }}>
-                        <div style={{ fontWeight: 'bold', color: '#7a7268', borderBottom: '0.5px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Substâncias & Acordos</div>
-                        <div>• Comprometido a informar tudo: {mfd.sec5_compromisso_informar ? 'Sim ✓' : 'Não ✕'}</div>
-                        <div>• Uso Recente Psicodélicos: {mfd.sec5_experiencias_recentes ? 'Sim ⚠️' : 'Não ✓'}</div>
-                        <div>• Acordo Abstinência 72h: {mfd.sec5_abstinencia ? 'Sim ✓' : 'Não ✕'}</div>
-                      </div>
-
-                      <div style={{ fontSize: '10px' }}>
-                        <div style={{ fontWeight: 'bold', color: '#7a7268', borderBottom: '0.5px solid #eee', paddingBottom: '0.2rem', marginBottom: '0.3rem' }}>Assinatura</div>
-                        <div>• <span style={{ fontFamily: "'Caveat', cursive", fontSize: '15px' }}>{mfd.assinatura || 'Não assinada'}</span></div>
-                        {mfd.sec6_duvidas && <div style={{ color: '#d35400', fontWeight: 'bold', marginTop: '0.2rem' }}>⚠️ Tem dúvidas a tirar com a equipe</div>}
-                      </div>
-
+                    <div style={sL}>Assinatura</div>
+                    <div style={{ border: '0.5px solid #c8c2b8', borderRadius: '2px', padding: '0.5rem', background: '#faf7f0', textAlign: 'center' }}>
+                      <img src={mfd.assinatura} alt="Assinatura" style={{ maxWidth: '100%', height: '80px', objectFit: 'contain' }} />
+                      {mfd.data_assinatura && <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '0.3rem' }}>Assinado em {mfd.data_assinatura}</div>}
                     </div>
                   </div>
                 )}
@@ -2140,7 +2860,7 @@ export default function EventDetail({ params }) {
                     if (!cleanPhone) { alert('Este viajante não tem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${activeFichaContact.id}`;
                     const firstName = activeFichaContact.name?.split(' ')[0] || '';
-                    const message = `Oi, ${firstName}! Por favor, preenche algumas informações sobre remédios que você está tomando.\n\nAlguns remédios interferem na experiência, ou mesmo inviabilizam ela.\n\nLink seguro para preenchimento: ${publicLink}`;
+                    const message = `Oi, ${firstName}!\nPor favor, preenche ainda hoje as informações do Formulário de Triagem, clicando no link abaixo:\n\n${publicLink}\n\nPor favor preenche ainda hoje pra dar tempo de a gente planejar sua experiência.`;
                     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
                   }}
                   style={{ ...s.btn, flex: '1 1 100px', justifyContent: 'center' }}
