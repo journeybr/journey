@@ -85,7 +85,6 @@ export default function PublicFicha() {
   const [currentMed, setCurrentMed] = useState('');
   const [currentDosage, setCurrentDosage] = useState('');
   const [currentFreq, setCurrentFreq] = useState('');
-  const [currentLastUse, setCurrentLastUse] = useState('');
   const [suggestions, setSuggestions] = useState([]);
 
   const canvasRef = useRef(null);
@@ -218,8 +217,8 @@ export default function PublicFicha() {
 
   const addMedication = () => {
     if (!currentMed.trim()) return;
-    setMedications(prev => [...prev, { name: currentMed.trim(), dosage: currentDosage.trim(), frequency: currentFreq.trim(), last_use: currentLastUse }]);
-    setCurrentMed(''); setCurrentDosage(''); setCurrentFreq(''); setCurrentLastUse('');
+    setMedications(prev => [...prev, { name: currentMed.trim(), dosage: currentDosage.trim(), frequency: currentFreq.trim() }]);
+    setCurrentMed(''); setCurrentDosage(''); setCurrentFreq('');
     setSuggestions([]);
   };
 
@@ -495,68 +494,63 @@ export default function PublicFicha() {
                 <h3 style={{ margin: '0 0 0.25rem', color: '#1a1a1a', fontSize: '1rem' }}>{stepTitle}</h3>
                 <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 0.25rem' }}>Confirmo que:</p>
                 <CB name="sec4b_dependencia" label="Tenho histórico de dependência, abuso ou uso problemático de álcool, drogas, medicamentos prescritos ou outras substâncias." isNeg />
-                <CB name="sec4b_remedio" label="Não estou usando qualquer medicamento, suplemento ou substância com ação sobre humor, sono, ansiedade, depressão ou sistema nervoso que possa interagir ou apresentar conflito com substâncias psicodélicas, enteógenas ou psicoativas, incluindo, mas não se limitando a antidepressivos, ISRSs, IRSNs, IMAOs, estabilizadores de humor, antipsicóticos, ansiolíticos, benzodiazepínicos, sedativos, hipnóticos, estimulantes, medicamentos para dormir, lítio, suplementos serotoninérgicos, fitoterápicos ou produtos naturais com efeito psicoativo." isNeg={!formData.sec4b_remedio} />
+                <CB name="sec4b_remedio" label="Não estou usando nenhum medicamento, suplemento ou substância que possa interagir com psicodélicos ou enteógenos — incluindo medicamentos psiquiátricos (antidepressivos, ISRSs, IRSNs, IMAOs, estabilizadores de humor, antipsicóticos, ansiolíticos, benzodiazepínicos, sedativos, hipnóticos, estimulantes), remédios para pressão, analgésicos, hormônios, antibióticos, suplementos, vitaminas, fitoterápicos (erva-de-são-joão, 5-HTP, triptofano, SAM-e, melatonina), cannabis, álcool, microdosagem ou qualquer outra substância." isNeg={!formData.sec4b_remedio} />
 
-                <p style={{ fontSize: '0.85rem', color: '#5a605c', lineHeight: '1.6', margin: '0.5rem 0 0.75rem' }}>
-                  Anote abaixo tudo o que você está tomando, usando ou tomou no último mês.<br /><br />
-                  Inclua medicamentos psiquiátricos, antidepressivos, ansiolíticos, estabilizadores de humor, antipsicóticos, estimulantes, remédios para pressão, remédios para dormir, analgésicos, hormônios, antibióticos, suplementos, vitaminas, fitoterápicos, substâncias recreativas, cannabis, álcool, microdosagem, 5-HTP, triptofano, erva-de-são-joão, SAM-e, melatonina ou qualquer outro produto.
-                </p>
-
-                <div style={{ background: '#f5f3ef', padding: '1.25rem', borderRadius: '10px', border: '1px solid #e5dfd3' }}>
-                  <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2d4a3e', marginBottom: '0.75rem' }}>Adicionar medicamento ou substância</div>
-                  <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
-                    <input type="text" placeholder="Nome do remédio ou substância..." value={currentMed} onChange={handleMedName}
-                      style={{ ...inputStyle }} />
-                    {suggestions.length > 0 && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d4cbb8', borderRadius: '6px', zIndex: 20, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-                        {suggestions.map((s, i) => (
-                          <div key={i} onClick={() => { setCurrentMed(s); setSuggestions([]); }}
-                            style={{ padding: '0.65rem 0.9rem', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f0ece4' : 'none', fontSize: '0.9rem' }}>
-                            {s}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <input type="text" placeholder="Dose (ex: 50mg)" value={currentDosage} onChange={e => setCurrentDosage(e.target.value)} style={inputStyle} />
-                    <input type="text" placeholder="Frequência (ex: 1x ao dia)" value={currentFreq} onChange={e => setCurrentFreq(e.target.value)} style={inputStyle} />
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <label style={{ fontSize: '0.82rem', color: '#5a605c', flexShrink: 0 }}>Último uso:</label>
-                    <input type="date" value={currentLastUse} onChange={e => setCurrentLastUse(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-                  </div>
-                  <button type="button" onClick={addMedication}
-                    style={{ width: '100%', padding: '0.7rem', background: '#2d4a3e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem' }}>
-                    + Adicionar
-                  </button>
-                </div>
-
-                {medications.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                    {medications.map((m, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.75rem 1rem', background: '#fff', border: '1px solid #e5dfd3', borderLeft: '3px solid #2d4a3e', borderRadius: '6px', gap: '0.75rem' }}>
-                        <div>
-                          <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{m.name}</div>
-                          <div style={{ fontSize: '0.78rem', color: '#666', marginTop: '0.15rem' }}>
-                            {[m.dosage, m.frequency, m.last_use ? `último uso: ${m.last_use}` : ''].filter(Boolean).join(' · ')}
-                          </div>
+                {!formData.sec4b_remedio && (<>
+                  <div style={{ background: '#f5f3ef', padding: '1.25rem', borderRadius: '10px', border: '1px solid #e5dfd3' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2d4a3e', marginBottom: '0.75rem' }}>Adicionar medicamento ou substância</div>
+                    <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
+                      <input type="text" placeholder="Nome do remédio ou substância..." value={currentMed} onChange={handleMedName}
+                        style={{ ...inputStyle }} />
+                      {suggestions.length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #d4cbb8', borderRadius: '6px', zIndex: 20, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                          {suggestions.map((s, i) => (
+                            <div key={i} onClick={() => { setCurrentMed(s); setSuggestions([]); }}
+                              style={{ padding: '0.65rem 0.9rem', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid #f0ece4' : 'none', fontSize: '0.9rem' }}>
+                              {s}
+                            </div>
+                          ))}
                         </div>
-                        <button type="button" onClick={() => setMedications(medications.filter((_, i) => i !== idx))}
-                          style={{ color: '#dc2626', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.85rem', flexShrink: 0, padding: '0.2rem' }}>
-                          Remover
-                        </button>
-                      </div>
-                    ))}
+                      )}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                      <input type="text" placeholder="Dose (ex: 50mg)" value={currentDosage} onChange={e => setCurrentDosage(e.target.value)} style={inputStyle} />
+                      <input type="text" placeholder="Frequência (ex: 1x ao dia)" value={currentFreq} onChange={e => setCurrentFreq(e.target.value)} style={inputStyle} />
+                    </div>
+                    <button type="button" onClick={addMedication}
+                      style={{ width: '100%', padding: '0.7rem', background: '#2d4a3e', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.9rem' }}>
+                      + Adicionar
+                    </button>
                   </div>
-                )}
 
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#3a413d', display: 'block', marginBottom: '0.4rem' }}>Outros medicamentos, suplementos ou substâncias:</label>
-                  <textarea name="sec4c_outros" value={formData.sec4c_outros} onChange={handleInputChange}
-                    placeholder="Liste aqui o que não encontrou na busca acima, ou qualquer outra substância relevante..." rows={3}
-                    style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }} />
-                </div>
+                  {medications.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {medications.map((m, idx) => (
+                        <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.75rem 1rem', background: '#fff', border: '1px solid #e5dfd3', borderLeft: '3px solid #2d4a3e', borderRadius: '6px', gap: '0.75rem' }}>
+                          <div>
+                            <div style={{ fontWeight: '600', fontSize: '0.9rem' }}>{m.name}</div>
+                            {(m.dosage || m.frequency) && (
+                              <div style={{ fontSize: '0.78rem', color: '#666', marginTop: '0.15rem' }}>
+                                {[m.dosage, m.frequency].filter(Boolean).join(' · ')}
+                              </div>
+                            )}
+                          </div>
+                          <button type="button" onClick={() => setMedications(medications.filter((_, i) => i !== idx))}
+                            style={{ color: '#dc2626', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: '0.85rem', flexShrink: 0, padding: '0.2rem' }}>
+                            Remover
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div>
+                    <label style={{ fontSize: '0.85rem', fontWeight: '600', color: '#3a413d', display: 'block', marginBottom: '0.4rem' }}>Outros medicamentos, suplementos ou substâncias:</label>
+                    <textarea name="sec4c_outros" value={formData.sec4c_outros} onChange={handleInputChange}
+                      placeholder="Liste aqui o que não encontrou na busca acima, ou qualquer outra substância relevante..." rows={3}
+                      style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }} />
+                  </div>
+                </>)}
 
                 <CB name="sec4b_abstinencia_remedio" label="Comprometo-me a informar à organização qualquer alteração no uso de remédios e suplementos, de hoje até o dia da cerimônia." />
               </>)}
