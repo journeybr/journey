@@ -111,10 +111,14 @@ export default function PublicFicha() {
       setContactId(id);
       if (data.medical_form_step) setCurrentStep(Math.min(data.medical_form_step, 8));
       if (data.medications_list) setMedications(data.medications_list);
+      const firstName = data.nickname || (data.name || '').split(' ')[0] || '';
+      const fullName = data.nome_completo || '';
       if (data.medical_form_data && Object.keys(data.medical_form_data).length > 0) {
-        setFormData(prev => ({ ...prev, ...data.medical_form_data }));
+        const saved = { ...data.medical_form_data };
+        if (!saved.nome_completo) saved.nome_completo = firstName;
+        setFormData(prev => ({ ...prev, ...saved }));
       } else {
-        setFormData(prev => ({ ...prev, nome_completo: data.name || '', telefone: data.phone || '', cpf: data.cpf || '' }));
+        setFormData(prev => ({ ...prev, nome_completo: fullName || firstName, telefone: data.phone || '', cpf: data.cpf || '' }));
       }
     })();
   }, []);

@@ -88,7 +88,7 @@ const PillIcon = ({ status = 'pending', size = 22, strokeColor }) => {
   const isOk = status === 'ok';
   const isAttn = status === 'attention';
   const isWarn = status === 'warn';
-  const fill = isOk ? '#5d9470' : isAttn ? '#c0392b' : isWarn ? '#c4892a' : 'none';
+  const fill = isOk ? '#5d9470' : isAttn ? '#c0392b' : isWarn ? '#e0a820' : 'none';
   const stroke = (!isOk && !isAttn && !isWarn) ? (strokeColor || '#c8c2b8') : 'none';
   const lineColor = (!isOk && !isAttn && !isWarn) ? (strokeColor || '#c8c2b8') : 'rgba(255,255,255,0.5)';
   return (
@@ -1952,7 +1952,7 @@ export default function EventDetail({ params }) {
         const hasFicha = !!(rContact?.medical_form_data || rContact?.medical_form_step > 0);
         const btnBase = { width: '100%', padding: '10px 12px', background: 'transparent', border: '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: '#3a3530', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' };
         const pillStatus = rIsOk ? 'ok' : rIsAcomp ? 'warn' : rStatus === 'preenchido' ? 'attention' : 'pending';
-        const headerColor = rIsOk ? '#5d9470' : rIsAcomp ? '#c4892a' : '#c0392b';
+        const headerColor = rIsOk ? '#5d9470' : rIsAcomp ? '#e0a820' : '#c0392b';
         const statusLabel = rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Definido como Ok' : rStatus === 'Acompanhar' ? 'Definido para acompanhar' : rStatus === 'preenchido' ? 'Ficha preenchida — possui remédios' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento';
         return (
           <div
@@ -1986,7 +1986,7 @@ export default function EventDetail({ params }) {
                 {!rIsAcomp && (
                   <button
                     onClick={() => { updateRemedioStatus(remedioModal.contactId, 'Acompanhar'); setRemedioModal(null); }}
-                    style={{ ...btnBase, color: '#c4892a', border: '0.5px solid #e8c07a' }}
+                    style={{ ...btnBase, color: '#e0a820', border: '0.5px solid #f0c84a' }}
                   >
                     ◑ Definir como Acompanhar
                   </button>
