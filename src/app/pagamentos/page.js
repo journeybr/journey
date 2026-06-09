@@ -114,10 +114,9 @@ export default function PagamentosPage() {
 
   // Filters
   const [personSearch, setPersonSearch] = useState('');
-  const [selectedCeremonies, setSelectedCeremonies] = useState(new Set());
+  const [selectedCeremony, setSelectedCeremony] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const router = useRouter();
 
@@ -429,7 +428,7 @@ export default function PagamentosPage() {
 
   const filtered = useMemo(() => {
     return participants.filter(p => {
-      if (selectedCeremonies.size > 0 && !selectedCeremonies.has(p.event_id)) return false;
+      if (selectedCeremony && p.event_id !== selectedCeremony) return false;
       if (personSearch) {
         const q = personSearch.toLowerCase();
         const name = (p.contacts?.nickname || p.contacts?.name || '').toLowerCase();
@@ -444,12 +443,12 @@ export default function PagamentosPage() {
       }
       return true;
     });
-  }, [participants, selectedCeremonies, personSearch, dateFrom, dateTo]);
+  }, [participants, selectedCeremony, personSearch, dateFrom, dateTo]);
 
-  const hasFilters = selectedCeremonies.size > 0 || personSearch || dateFrom || dateTo;
+  const hasFilters = !!selectedCeremony || !!personSearch || !!dateFrom || !!dateTo;
 
   const displayParticipants = useMemo(() => {
-    if (selectedCeremonies.size > 0) return filtered;
+    if (selectedCeremony) return filtered;
     const merged = new Set();
     const result = [];
     for (const p of filtered) {
@@ -488,7 +487,7 @@ export default function PagamentosPage() {
       }
     }
     return result;
-  }, [filtered, selectedCeremonies]);
+  }, [filtered, selectedCeremony]);
 
   const totalPago      = displayParticipants.filter(p => p.payment_status === 'pago').length;
   const totalParcelado = displayParticipants.filter(p => p.payment_status === 'parcelado').length;
@@ -522,16 +521,48 @@ export default function PagamentosPage() {
         </div>
       </nav>
 
+      {/* Filter bar */}
+      <div style={{ background: '#f0ede8', borderBottom: '0.5px solid #d0cbc2', padding: '0.6rem 2.5rem', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          placeholder="Filtrar por pessoa..."
+          value={personSearch}
+          onChange={e => setPersonSearch(e.target.value)}
+          style={{ padding: '3px 9px', background: '#fdfbf7', border: personSearch ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', width: '140px', outline: 'none' }}
+        />
+        {allCeremonies.length > 0 && (
+          <select
+            value={selectedCeremony}
+            onChange={e => setSelectedCeremony(e.target.value)}
+            style={{ padding: '3px 7px', background: '#fdfbf7', border: selectedCeremony ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: selectedCeremony ? '#3a3530' : '#7a7268', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', outline: 'none', cursor: 'pointer', maxWidth: '180px' }}
+          >
+            <option value="">Todas as cerimônias</option>
+            {allCeremonies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
+        <span style={{ fontSize: '9px', color: '#7a7268', letterSpacing: '0.08em' }}>de</span>
+        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+          style={{ padding: '3px 7px', background: '#fdfbf7', border: dateFrom ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', outline: 'none' }} />
+        <span style={{ fontSize: '9px', color: '#7a7268', letterSpacing: '0.08em' }}>até</span>
+        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+          style={{ padding: '3px 7px', background: '#fdfbf7', border: dateTo ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', outline: 'none' }} />
+        {hasFilters && (
+          <button onClick={() => { setPersonSearch(''); setSelectedCeremony(''); setDateFrom(''); setDateTo(''); }}
+            style={{ padding: '3px 8px', background: 'none', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.08em' }}>
+            × limpar
+          </button>
+        )}
+        {!loading && (
+          <span style={{ marginLeft: 'auto', fontSize: '9px', color: '#aaa49c', letterSpacing: '0.06em' }}>
+            {displayParticipants.length} participante{displayParticipants.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+
       <div style={s.content}>
         {/* Header */}
         <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '0.5px solid #d0cbc2' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>Pagamentos</h1>
-            <button onClick={() => setFiltersOpen(f => !f)}
-              style={{ background: 'none', border: `0.5px ${hasFilters ? 'solid #5d9470' : 'dashed #b0a898'}`, borderRadius: '2px', color: hasFilters ? '#5d9470' : '#9a9288', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', padding: '5px 10px', marginTop: '6px', flexShrink: 0 }}>
-              {hasFilters ? '● filtros' : '○ filtros'}
-            </button>
-          </div>
+          <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>Pagamentos</h1>
           {!loading && (
             <div style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.06em', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <span style={{ color: '#5d9470' }}>◉ {totalPago}</span>·
@@ -542,57 +573,6 @@ export default function PagamentosPage() {
             </div>
           )}
         </div>
-
-        {/* Filters panel */}
-        {filtersOpen && (
-          <div style={{ background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px', padding: '1.2rem', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-              <div>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9a9288', marginBottom: '0.5rem' }}>Pessoa</div>
-                <input value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="buscar por nome..."
-                  style={{ width: '100%', padding: '7px 10px', background: '#f7f4ee', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }} />
-              </div>
-              <div>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9a9288', marginBottom: '0.5rem' }}>Intervalo de log</div>
-                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                  <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-                    style={{ flex: 1, padding: '7px 6px', background: '#f7f4ee', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
-                  <span style={{ color: '#b0a898', fontSize: '10px' }}>—</span>
-                  <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-                    style={{ flex: 1, padding: '7px 6px', background: '#f7f4ee', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
-                </div>
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#9a9288', marginBottom: '0.5rem' }}>Cerimônia</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {allCeremonies.map(c => {
-                  const checked = selectedCeremonies.has(c.id);
-                  return (
-                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', padding: '4px 8px', background: checked ? '#f0f5f1' : '#f7f4ee', border: `0.5px ${checked ? 'solid #5d9470' : 'dashed #c8c2b8'}`, borderRadius: '2px' }}>
-                      <input type="checkbox" checked={checked}
-                        onChange={() => {
-                          setSelectedCeremonies(prev => {
-                            const next = new Set(prev);
-                            checked ? next.delete(c.id) : next.add(c.id);
-                            return next;
-                          });
-                        }}
-                        style={{ accentColor: '#5d9470', margin: 0 }} />
-                      <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: checked ? '#3a5040' : '#7a7268' }}>{c.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-            {hasFilters && (
-              <button onClick={() => { setPersonSearch(''); setSelectedCeremonies(new Set()); setDateFrom(''); setDateTo(''); }}
-                style={{ marginTop: '0.8rem', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.1em', textTransform: 'uppercase', padding: 0, textDecoration: 'underline', textUnderlineOffset: '2px' }}>
-                limpar filtros
-              </button>
-            )}
-          </div>
-        )}
 
         {loading ? (
           <div style={{ padding: '4rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.08em' }}>carregando...</div>
