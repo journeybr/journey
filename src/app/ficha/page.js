@@ -24,12 +24,11 @@ const MEDICATIONS_DATABASE = [
   '5-HTP', 'Triptofano', 'Erva-de-são-joão', 'SAM-e', 'Melatonina',
 ].sort();
 
-const S = { DECLARACAO: 1, MENTAL: 2, FISICO: 3, MEDS1: 4, MEDS2: 5, MEDLIST: 6, RISCOS: 7, CONFIRMACAO: 8 };
+const S = { DECLARACAO: 1, MENTAL: 2, FISICO: 3, MEDS1: 4, MEDS2: 5, RISCOS: 6, CONFIRMACAO: 7 };
 
 function sectionStatus(step, fd, meds) {
   if (step === S.DECLARACAO) {
-    if (fd.sec1_nao_leu) return 'warn';
-    if (!fd.sec1_maioridade || !fd.sec1_voluntaria || !fd.sec1_leitura || !fd.sec1_instrucoes || !fd.sec1_conforto) return 'warn';
+    if (!fd.sec1_maioridade || !fd.sec1_voluntaria || !fd.sec1_instrucoes || !fd.sec1_conforto) return 'warn';
     return 'ok';
   }
   if (step === S.MENTAL) {
@@ -42,15 +41,12 @@ function sectionStatus(step, fd, meds) {
     return 'ok';
   }
   if (step === S.MEDS1) {
-    if (!fd.sec4a_informar || !fd.sec4a_informar_tudo || !fd.sec4a_sem_psicodelicos || !fd.sec4a_abstinencia || !fd.sec4a_nao_portar) return 'warn';
+    if (!fd.sec4a_informar || !fd.sec4a_informar_tudo || !fd.sec4a_sem_psicodelicos || !fd.sec4a_nao_portar) return 'warn';
     return 'ok';
   }
   if (step === S.MEDS2) {
     if (!fd.sec4b_remedio || fd.sec4b_dependencia || !fd.sec4b_abstinencia_remedio) return 'warn';
     return 'ok';
-  }
-  if (step === S.MEDLIST) {
-    return meds.length > 0 ? 'ok' : 'warn';
   }
   if (step === S.RISCOS) {
     if (fd.sec5_duvidas || !fd.sec5_informacoes || !fd.sec5_veracidade || !fd.sec5_responsabilidade) return 'warn';
@@ -99,15 +95,11 @@ export default function PublicFicha() {
 
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
 
-  const showMedList = !formData.sec4b_remedio || formData.sec4b_dependencia;
-  const visibleSteps = showMedList ? [1, 2, 3, 4, 5, 6, 7, 8] : [1, 2, 3, 4, 5, 7, 8];
+  const visibleSteps = [1, 2, 3, 4, 5, 6, 7];
   const currentIdx = visibleSteps.indexOf(currentStep);
   const totalSteps = visibleSteps.length;
 
-  // If conditional step disappears while user is on it, move forward
-  useEffect(() => {
-    if (currentStep === S.MEDLIST && !showMedList) setCurrentStep(S.RISCOS);
-  }, [showMedList]);
+  useEffect(() => { document.title = 'Formulário de Triagem'; }, []);
 
   // Load contact from URL
   useEffect(() => {
@@ -383,10 +375,9 @@ export default function PublicFicha() {
     [S.MENTAL]: '2. Saúde mental e histórico psiquiátrico',
     [S.FISICO]: '3. Saúde física e histórico médico',
     [S.MEDS1]: '4. Medicamentos, suplementos e substâncias',
-    [S.MEDS2]: '4. Medicamentos, suplementos e substâncias (cont.)',
-    [S.MEDLIST]: '4. Lista de medicamentos e substâncias',
-    [S.RISCOS]: '5. Ciência sobre riscos e responsabilidade',
-    [S.CONFIRMACAO]: '6. Confirmação final',
+    [S.MEDS2]: '5. Medicamentos, suplementos e substâncias (cont.)',
+    [S.RISCOS]: '6. Ciência sobre riscos e responsabilidade',
+    [S.CONFIRMACAO]: '7. Confirmação final',
   }[currentStep];
 
   const inputStyle = { width: '100%', padding: '0.75rem', border: '1px solid #d4cbb8', borderRadius: '6px', fontFamily: 'inherit', fontSize: '0.95rem', boxSizing: 'border-box' };
@@ -455,8 +446,6 @@ export default function PublicFicha() {
                 <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 0.25rem' }}>Como participante, declaro que:</p>
                 <CB name="sec1_maioridade" label="Sou adulto legalmente responsável e tenho capacidade plena para decidir sobre minha participação." />
                 <CB name="sec1_voluntaria" label="Minha participação é voluntária, consciente e baseada nas informações que recebi até o momento." />
-                <CB name="sec1_leitura" label="Li o documento de preparação e compreendo as orientações gerais sobre preparação, conduta durante a experiência e integração posterior." />
-                <CB name="sec1_nao_leu" label="Não recebi ou não li o documento de preparação." isNeg />
                 <CB name="sec1_instrucoes" label="Comprometo-me a seguir as instruções da equipe antes, durante e depois da experiência." />
                 <CB name="sec1_conforto" label="Sinto-me confortável em praticar autorreflexão, escutar com atenção, comunicar-me de forma honesta e assumir responsabilidade por questões emocionais, psicológicas ou pessoais que possam surgir." />
               </>)}
@@ -497,29 +486,22 @@ export default function PublicFicha() {
                 <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 0.25rem' }}>Confirmo que:</p>
                 <CB name="sec4a_informar" label="Informarei de forma completa e verdadeira todos os medicamentos, suplementos, substâncias, tratamentos ou produtos que estou usando atualmente ou que usei no último mês." />
                 <CB name="sec4a_informar_tudo" label="Entendo que devo informar tudo, mesmo que pareça irrelevante, ocasional, natural, recreativo, prescrito, não prescrito ou de venda livre." />
-                <CB name="sec4a_sem_psicodelicos" label="Não participei de qualquer experiência com substâncias psicodélicas, enteógenas ou psicoativas nos últimos 30 dias — e não participarei até a data da cerimônia — incluindo, mas não se limitando a ayahuasca, psilocibina, cannabis, rapé, sananga, LSD, MDMA, DMT, mescalina, iboga, ketamina ou microdosagem." />
-                <CB name="sec4a_abstinencia" label="Comprometo-me a não consumir cannabis, substâncias psicodélicas listadas no item acima, estimulantes, sedativos ou quaisquer outras substâncias de hoje até cinco dias depois da cerimônia." />
+                <CB name="sec4a_sem_psicodelicos" label="Não participarei de qualquer experiência com substâncias psicodélicas, enteógenas ou psicoativas nos 15 dias que antecedem a cerimônia e até 5 dias após a cerimônia — entre elas ayahuasca, psilocibina, LSD, MDMA, DMT, mescalina, iboga, ketamina e microdosagem, sem se limitar a essas." />
                 <CB name="sec4a_nao_portar" label="Comprometo-me a não levar, portar, compartilhar ou consumir durante a experiência qualquer substância, medicina, planta, suplemento ou produto psicoativo, incluindo, mas não se limitando a cannabis, rapé, sananga, álcool, estimulantes, sedativos, psicodélicos, enteógenos ou medicamentos de uso não informado, ciente de que o descumprimento deste compromisso poderá resultar na minha exclusão da experiência atual e de futuras cerimônias." />
               </>)}
 
-              {/* STEP 5 — Meds parte 2 */}
+              {/* STEP 5 — Meds parte 2 + lista de medicamentos */}
               {currentStep === S.MEDS2 && (<>
                 <h3 style={{ margin: '0 0 0.25rem', color: '#1a1a1a', fontSize: '1rem' }}>{stepTitle}</h3>
                 <p style={{ fontSize: '0.85rem', color: '#666', margin: '0 0 0.25rem' }}>Confirmo que:</p>
-                <CB name="sec4b_remedio" label="Não estou usando qualquer medicamento, suplemento ou substância com ação sobre humor, sono, ansiedade, depressão ou sistema nervoso que possa interagir ou apresentar conflito com substâncias psicodélicas, enteógenas ou psicoativas, incluindo, mas não se limitando a antidepressivos, ISRSs, IRSNs, IMAOs, estabilizadores de humor, antipsicóticos, ansiolíticos, benzodiazepínicos, sedativos, hipnóticos, estimulantes, medicamentos para dormir, lítio, suplementos serotoninérgicos, fitoterápicos ou produtos naturais com efeito psicoativo." isNeg={!formData.sec4b_remedio} />
-                <CB name="sec4b_abstinencia_remedio" label="Comprometo-me a não consumir os remédios listados no item acima, estimulantes, sedativos ou quaisquer outras substâncias de hoje até cinco dias depois da cerimônia." />
                 <CB name="sec4b_dependencia" label="Tenho histórico de dependência, abuso ou uso problemático de álcool, drogas, medicamentos prescritos ou outras substâncias." isNeg />
-              </>)}
+                <CB name="sec4b_remedio" label="Não estou usando qualquer medicamento, suplemento ou substância com ação sobre humor, sono, ansiedade, depressão ou sistema nervoso que possa interagir ou apresentar conflito com substâncias psicodélicas, enteógenas ou psicoativas, incluindo, mas não se limitando a antidepressivos, ISRSs, IRSNs, IMAOs, estabilizadores de humor, antipsicóticos, ansiolíticos, benzodiazepínicos, sedativos, hipnóticos, estimulantes, medicamentos para dormir, lítio, suplementos serotoninérgicos, fitoterápicos ou produtos naturais com efeito psicoativo." isNeg={!formData.sec4b_remedio} />
 
-              {/* STEP 6 — Lista de medicamentos (conditional) */}
-              {currentStep === S.MEDLIST && (<>
-                <h3 style={{ margin: '0 0 0.5rem', color: '#1a1a1a', fontSize: '1rem' }}>{stepTitle}</h3>
-                <p style={{ fontSize: '0.85rem', color: '#5a605c', lineHeight: '1.6', margin: '0 0 1rem' }}>
-                  De acordo com o que você preencheu na página anterior, anote abaixo tudo o que você está tomando, usando ou tomou no último mês.<br /><br />
+                <p style={{ fontSize: '0.85rem', color: '#5a605c', lineHeight: '1.6', margin: '0.5rem 0 0.75rem' }}>
+                  Anote abaixo tudo o que você está tomando, usando ou tomou no último mês.<br /><br />
                   Inclua medicamentos psiquiátricos, antidepressivos, ansiolíticos, estabilizadores de humor, antipsicóticos, estimulantes, remédios para pressão, remédios para dormir, analgésicos, hormônios, antibióticos, suplementos, vitaminas, fitoterápicos, substâncias recreativas, cannabis, álcool, microdosagem, 5-HTP, triptofano, erva-de-são-joão, SAM-e, melatonina ou qualquer outro produto.
                 </p>
 
-                {/* Medication entry */}
                 <div style={{ background: '#f5f3ef', padding: '1.25rem', borderRadius: '10px', border: '1px solid #e5dfd3' }}>
                   <div style={{ fontSize: '0.85rem', fontWeight: '600', color: '#2d4a3e', marginBottom: '0.75rem' }}>Adicionar medicamento ou substância</div>
                   <div style={{ position: 'relative', marginBottom: '0.5rem' }}>
@@ -575,6 +557,8 @@ export default function PublicFicha() {
                     placeholder="Liste aqui o que não encontrou na busca acima, ou qualquer outra substância relevante..." rows={3}
                     style={{ ...inputStyle, resize: 'vertical', minHeight: '80px' }} />
                 </div>
+
+                <CB name="sec4b_abstinencia_remedio" label="Comprometo-me a informar à organização qualquer alteração no uso de remédios e suplementos, de hoje até o dia da cerimônia." />
               </>)}
 
               {/* STEP 7 — Riscos */}
