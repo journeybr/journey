@@ -2004,7 +2004,7 @@ export default function EventDetail({ params }) {
                     const cleanPhone = rContact?.phone?.replace(/\D/g, '') || '';
                     if (!cleanPhone) { alert('Sem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${remedioModal.contactId}`;
-                    const firstName = rContact?.nickname || rContact?.name?.split(' ')[0] || '';
+                    const firstName = (rContact?.nickname || rContact?.name || '').split(' ')[0] || '';
                     const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
                     const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);
                     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
@@ -2950,7 +2950,7 @@ export default function EventDetail({ params }) {
                     const cleanPhone = activeFichaContact.phone?.replace(/\D/g, '') || '';
                     if (!cleanPhone) { alert('Este viajante não tem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${activeFichaContact.id}`;
-                    const firstName = activeFichaContact.nickname || activeFichaContact.name?.split(' ')[0] || '';
+                    const firstName = (activeFichaContact.nickname || activeFichaContact.name || '').split(' ')[0] || '';
                     const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
                     const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);
                     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
