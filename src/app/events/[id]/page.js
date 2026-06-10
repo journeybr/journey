@@ -2004,8 +2004,9 @@ export default function EventDetail({ params }) {
                     const cleanPhone = rContact?.phone?.replace(/\D/g, '') || '';
                     if (!cleanPhone) { alert('Sem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${remedioModal.contactId}`;
-                    const firstName = rContact?.name?.split(' ')[0] || '';
-                    const message = `Oi, ${firstName}!\nPor favor, preenche ainda hoje as informações do Formulário de Triagem, clicando no link abaixo:\n\n${publicLink}\n\nPor favor preenche ainda hoje pra dar tempo de a gente planejar sua experiência.`;
+                    const firstName = rContact?.nickname || rContact?.name?.split(' ')[0] || '';
+                    const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
+                    const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);
                     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
                     updateRemedioStatus(remedioModal.contactId, 'enviado');
                     setRemedioModal(null);
@@ -2949,8 +2950,9 @@ export default function EventDetail({ params }) {
                     const cleanPhone = activeFichaContact.phone?.replace(/\D/g, '') || '';
                     if (!cleanPhone) { alert('Este viajante não tem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${activeFichaContact.id}`;
-                    const firstName = activeFichaContact.name?.split(' ')[0] || '';
-                    const message = `Oi, ${firstName}!\nPor favor, preenche ainda hoje as informações do Formulário de Triagem, clicando no link abaixo:\n\n${publicLink}\n\nPor favor preenche ainda hoje pra dar tempo de a gente planejar sua experiência.`;
+                    const firstName = activeFichaContact.nickname || activeFichaContact.name?.split(' ')[0] || '';
+                    const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
+                    const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);
                     window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
                   }}
                   style={{ ...s.btn, flex: '1 1 100px', justifyContent: 'center' }}

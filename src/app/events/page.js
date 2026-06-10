@@ -255,6 +255,7 @@ function CeremonyFormModal({ data, setData, onSubmit, onClose, title, submitLabe
                   address: copySource.address || prev.address,
                   preparation_text: copySource.preparation_text || prev.preparation_text,
                   payment_text: copySource.payment_text || prev.payment_text,
+                  ficha_message: copySource.ficha_message || prev.ficha_message,
                 }))}
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.08em', color: '#b0a898', textDecoration: 'underline', textUnderlineOffset: '3px' }}
               >
@@ -277,6 +278,11 @@ function CeremonyFormModal({ data, setData, onSubmit, onClose, title, submitLabe
           <div style={{ marginBottom: '1.2rem' }}>
             <label style={modalLabelStyle}>Texto para Pagamento</label>
             <textarea value={data.payment_text || ''} onChange={e => setData({ ...data, payment_text: e.target.value })} rows="3" placeholder="Informações sobre formas de pagamento, valores, PIX..." style={{ ...modalInputStyle, resize: 'vertical' }} />
+          </div>
+          <div style={{ marginBottom: '1.2rem' }}>
+            <label style={modalLabelStyle}>Mensagem para Enviar Ficha de Triagem</label>
+            <textarea value={data.ficha_message || ''} onChange={e => setData({ ...data, ficha_message: e.target.value })} rows="5" placeholder={'Oi, [nome]!\n\nSegue o Formulário de Triagem...\n\n[link]'} style={{ ...modalInputStyle, resize: 'vertical' }} />
+            <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.05em' }}>Use [nome] e [link] como variáveis.</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
             <div>
@@ -304,7 +310,8 @@ export default function Events() {
   const [user, setUser] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
-  const emptyForm = { name: '', date: '', date2: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', price_1d: '', price_2d: '' };
+  const defaultFichaMessage = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
+  const emptyForm = { name: '', date: '', date2: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', ficha_message: defaultFichaMessage, price_1d: '', price_2d: '' };
   const [formData, setFormData] = useState(emptyForm);
   const [editFormData, setEditFormData] = useState(emptyForm);
   const [inactiveEvents, setInactiveEvents] = useState([]);
@@ -411,6 +418,7 @@ export default function Events() {
       address: event.address || '',
       preparation_text: event.preparation_text || '',
       payment_text: event.payment_text || '',
+      ficha_message: event.ficha_message || defaultFichaMessage,
       price_1d: event.price_1d != null ? String(event.price_1d) : '',
       price_2d: event.price_2d != null ? String(event.price_2d) : '',
     });
