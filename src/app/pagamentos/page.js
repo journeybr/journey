@@ -160,12 +160,18 @@ export default function PagamentosPage() {
     if (!entry) return '';
     const d = new Date(entry.at);
     const dt = d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+    if (entry.type === 'conferido') return `${dt} — Conferido`;
+    if (entry.type === 'confirmado_local') {
+      const datePart = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' });
+      return `${dt} — Confirmado por ${entry.by} em ${datePart}`;
+    }
     return `${dt} — ${entry.by} ${entry.msg}`;
   }
 
-  function newLogEntry(msg, prevState = null) {
+  function newLogEntry(msg, prevState = null, extra = null) {
     const entry = { at: new Date().toISOString(), by: adminNameRef.current, msg };
     if (prevState) entry.prev = prevState;
+    if (extra) Object.assign(entry, extra);
     return entry;
   }
 
@@ -271,7 +277,23 @@ export default function PagamentosPage() {
       payment_method: 'Câmbio',
       payment_records: [{ amount, date: today, cancelled: false }],
       installment_count: null,
-      payment_log: [...getLog(contactId, eventId), newLogEntry('confirmou comprovante — pago via Câmbio', prevState)],
+      payment_log: [...getLog(contactId, eventId), newLogEntry('confirmou comprovante — pago via Câmbio', prevState, { type: 'conferido' })],
+    };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    updateLocal(contactId, eventId, updateData);
+  }
+
+  async function confirmNoLocal(contactId, eventId) {
+    const today = new Date().toISOString().split('T')[0];
+    const p = getParticipant(contactId, eventId);
+    const prevState = p ? { status: p.payment_status || 'a pagar no local', method: p.payment_method || null, records: p.payment_records || [], installment_count: p.installment_count || null, discount: p.discount ?? null } : null;
+    const expected = computeExpected(p, participants);
+    const updateData = {
+      payment_status: 'pago',
+      payment_method: 'No Local',
+      payment_records: [{ amount: expected, date: today, cancelled: false }],
+      installment_count: null,
+      payment_log: [...getLog(contactId, eventId), newLogEntry('confirmou recebimento no local', prevState, { type: 'confirmado_local' })],
     };
     await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
     updateLocal(contactId, eventId, updateData);
@@ -584,6 +606,7 @@ export default function PagamentosPage() {
           STATUS_GROUPS.map(({ key, label, icon, color }) => {
             const group = displayParticipants.filter(p => (p.payment_status || 'em aberto') === key);
             const isConferir = key === 'conferir pagamento';
+            const isNoLocal = key === 'a pagar no local';
             const isParcelado = key === 'parcelado';
             const isPago = key === 'pago';
 
@@ -781,6 +804,16 @@ export default function PagamentosPage() {
                         </div>
                       )}
 
+                      {isNoLocal && (
+                        <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: p.payment_log?.length > 0 ? 'none' : '0.5px solid #d0cbc2', borderRadius: p.payment_log?.length > 0 ? 0 : '0 0 2px 2px', padding: '0.5rem 1rem' }}>
+                          <button
+                            onClick={e => { e.stopPropagation(); if (confirm(`Confirmar recebimento de ${name} no local?`)) confirmNoLocal(p.contact_id, p.event_id); }}
+                            style={{ padding: '6px 12px', background: '#5d9470', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                            ✓ Confirmar recebimento
+                          </button>
+                        </div>
+                      )}
+
                       {(p.payment_log?.length > 0) && (
                         <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.35rem 1rem' }}>
                           <LogFooter log={p.payment_log} fmtLog={fmtLog}
@@ -927,7 +960,9 @@ export default function PagamentosPage() {
                 <div key={i} style={{ padding: '0.5rem 0', borderBottom: '0.5px dashed #d0cbc2' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
                     <div style={{ flex: 1, fontSize: '10px', color: '#3a3530', lineHeight: 1.5 }}>
-                      {entry.by && <span style={{ fontWeight: 600 }}>{entry.by} </span>}{entry.msg}
+                      {entry.type === 'conferido' ? 'Conferido' :
+                       entry.type === 'confirmado_local' ? `Confirmado por ${entry.by} em ${new Date(entry.at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'America/Sao_Paulo' })}` :
+                       <>{entry.by && <span style={{ fontWeight: 600 }}>{entry.by} </span>}{entry.msg}</>}
                       {entry.url && (
                         <a href={entry.url} target="_blank" rel="noreferrer"
                           onClick={e => e.stopPropagation()}
