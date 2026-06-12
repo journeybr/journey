@@ -69,6 +69,7 @@ export default function RegisterInterest() {
   const [participation, setParticipation] = useState(null);
   const [foundContact, setFoundContact] = useState(null); // null=unchecked, false=not found, {id,name}=found
   const [notYou, setNotYou] = useState(false);
+  const [waitlistMode, setWaitlistMode] = useState(false);
 
   useEffect(() => {
     if (params && params.id) {
@@ -213,19 +214,21 @@ export default function RegisterInterest() {
       const interestName = (effectiveName.trim() || 'viajante').split(' ')[0];
       const daysLabel = participation === 'both' ? 'Dia I e Dia II' : participation === 'day1' ? 'Dia I' : 'Dia II';
       const enrollLog = [{ at: new Date().toISOString(), by: interestName, msg: `${interestName} manifestou interesse (${daysLabel})` }];
+      const insertData = {
+        event_id: event.id,
+        contact_id: contactId,
+        status: 'intenção de ir',
+        date1_confirmed: participation !== 'day2',
+        date2_confirmed: participation !== 'day1',
+        remedio_status: 'enviar',
+        payment_status: 'em aberto',
+        vaga: 'Automático',
+        enrollment_log: enrollLog,
+      };
+      if (waitlistMode) insertData.waitlist_at = new Date().toISOString();
       const { error: linkErr } = await supabase
         .from('event_participants')
-        .insert([{
-          event_id: event.id,
-          contact_id: contactId,
-          status: 'intenção de ir',
-          date1_confirmed: participation !== 'day2',
-          date2_confirmed: participation !== 'day1',
-          remedio_status: 'enviar',
-          payment_status: 'em aberto',
-          vaga: 'Automático',
-          enrollment_log: enrollLog
-        }]);
+        .insert([insertData]);
 
       if (linkErr) throw linkErr;
 
@@ -378,15 +381,54 @@ export default function RegisterInterest() {
           {success ? (
             <div style={{ padding: '1.5rem 0', textAlign: 'center' }}>
               <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '2rem', color: '#3a3530', fontWeight: 400, marginBottom: '1rem', lineHeight: 1.2 }}>
-                Interesse registrado.
+                {waitlistMode ? 'Você está na fila.' : 'Interesse registrado.'}
               </div>
               <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', color: '#7a7268', lineHeight: 1.7, marginBottom: '2rem' }}>
-                Obrigado pelo interesse de caminhar conosco em {formatEventDates(event)}.<br />
-                Vamos entrar em contato em breve para os próximos passos.
+                {waitlistMode ? (
+                  <>
+                    Obrigado por entrar na fila de espera!<br />
+                    Caso disponibilizemos alguma vaga, entraremos em contato.
+                  </>
+                ) : (
+                  <>
+                    Obrigado pelo interesse de caminhar conosco em {formatEventDates(event)}.<br />
+                    Vamos entrar em contato em breve para os próximos passos.
+                  </>
+                )}
               </p>
               <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#b0a898', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
                 até breve · journey
               </div>
+            </div>
+          ) : event?.ceremony_status === 'fechada' ? (
+            <div style={{ padding: '1.5rem 0', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '2rem', color: '#3a3530', fontWeight: 400, marginBottom: '1rem', lineHeight: 1.2 }}>
+                Inscrições encerradas.
+              </div>
+              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', color: '#7a7268', lineHeight: 1.7 }}>
+                Infelizmente esta cerimônia não tem vagas disponíveis agora.<br />
+                Esperamos ver você em uma outra cerimônia.
+              </p>
+            </div>
+          ) : event?.ceremony_status === 'lista_espera' && !waitlistMode ? (
+            <div style={{ padding: '1.5rem 0', textAlign: 'center' }}>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.8rem', color: '#3a3530', fontWeight: 400, marginBottom: '1rem', lineHeight: 1.2 }}>
+                Sem vagas disponíveis.
+              </div>
+              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '13px', color: '#7a7268', lineHeight: 1.7, marginBottom: '2rem' }}>
+                Infelizmente esta cerimônia não tem vagas disponíveis agora.<br /><br />
+                Gostaria de entrar em uma fila de espera?
+              </p>
+              <button
+                onClick={() => setWaitlistMode(true)}
+                style={{
+                  fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.14em',
+                  textTransform: 'uppercase', color: '#f7f4ee', background: '#3a3530', border: 'none',
+                  padding: '13px 20px', borderRadius: '2px', cursor: 'pointer', width: '100%',
+                }}
+              >
+                Colocar o nome na Fila de Espera
+              </button>
             </div>
           ) : (
             <>
@@ -523,7 +565,7 @@ export default function RegisterInterest() {
                     transition: 'background 0.2s',
                   }}
                 >
-                  {submitting ? 'registrando...' : 'manifestar interesse'}
+                  {submitting ? 'registrando...' : waitlistMode ? 'entrar na fila de espera' : 'manifestar interesse'}
                 </button>
 
               </form>

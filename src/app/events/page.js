@@ -378,7 +378,7 @@ export default function Events() {
   }
 
   async function handleDeactivate(id) {
-    if (!confirm('Concluir esta experiência? Ela irá para a lista de cerimônias passadas.')) return;
+    if (!confirm('Concluir esta experiência? Ela será arquivada.')) return;
     const { error } = await supabase.from('events').update({ active: false }).eq('id', id);
     if (error) { alert('Erro ao concluir: ' + error.message); return; }
     // Mark confirmed participants as no longer "primeira vez"
@@ -406,6 +406,15 @@ export default function Events() {
     const { error } = await supabase.from('events').delete().eq('id', id);
     if (error) { alert('Erro ao excluir: ' + error.message); }
     else fetchEvents();
+  }
+
+  async function handleChangeStatus(id, newStatus) {
+    const labels = { lista_espera: 'Lista de Espera', fechada: 'Fechada para Novas Inscrições' };
+    const label = newStatus ? labels[newStatus] : 'Aberta';
+    if (!confirm(`Mudar o status desta cerimônia para "${label}"?`)) return;
+    const { error } = await supabase.from('events').update({ ceremony_status: newStatus || null }).eq('id', id);
+    if (error) { alert('Erro: ' + error.message); return; }
+    setEvents(prev => prev.map(e => e.id === id ? { ...e, ceremony_status: newStatus || null } : e));
   }
 
   function openEditModal(event) {
@@ -554,6 +563,20 @@ export default function Events() {
                     {event.date2 && <div><strong>D2:</strong> {new Date(event.date2).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>}
                   </div>
 
+                  {event.ceremony_status && (
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <span style={{
+                        fontFamily: 'sans-serif', fontSize: '8px', letterSpacing: '0.1em',
+                        textTransform: 'uppercase', fontWeight: 'bold', padding: '2px 6px', borderRadius: '2px',
+                        color: event.ceremony_status === 'fechada' ? '#7a1a1a' : '#6b4f00',
+                        background: event.ceremony_status === 'fechada' ? '#fdf0f0' : '#fdf8e0',
+                        border: `0.5px solid ${event.ceremony_status === 'fechada' ? '#e8c0c0' : '#e0d090'}`,
+                      }}>
+                        {event.ceremony_status === 'lista_espera' ? '⏳ Lista de Espera' : '⊘ Fechada'}
+                      </span>
+                    </div>
+                  )}
+
                   {/* Footer */}
                   <div style={{ borderTop: '0.5px dashed #c2b59b', paddingTop: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: '#8B0000', fontSize: '0.7rem', fontWeight: 'bold', fontFamily: 'sans-serif', letterSpacing: '1px' }}>
@@ -570,7 +593,25 @@ export default function Events() {
                         ✎
                       </button>
                       <button
-                        title="Concluir experiência"
+                        title={event.ceremony_status === 'lista_espera' ? 'Remover Lista de Espera' : 'Colocar em Lista de Espera'}
+                        onClick={e => { e.stopPropagation(); handleChangeStatus(event.id, event.ceremony_status === 'lista_espera' ? null : 'lista_espera'); }}
+                        style={{ ...s.cardActionBtn, color: event.ceremony_status === 'lista_espera' ? '#c8a830' : '#c8c2b8', fontSize: '12px' }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#a88020'}
+                        onMouseLeave={e => e.currentTarget.style.color = event.ceremony_status === 'lista_espera' ? '#c8a830' : '#c8c2b8'}
+                      >
+                        ⏳
+                      </button>
+                      <button
+                        title={event.ceremony_status === 'fechada' ? 'Reabrir para Inscrições' : 'Fechar para Novas Inscrições'}
+                        onClick={e => { e.stopPropagation(); handleChangeStatus(event.id, event.ceremony_status === 'fechada' ? null : 'fechada'); }}
+                        style={{ ...s.cardActionBtn, color: event.ceremony_status === 'fechada' ? '#8B0000' : '#c8c2b8', fontSize: '12px' }}
+                        onMouseEnter={e => e.currentTarget.style.color = '#8B0000'}
+                        onMouseLeave={e => e.currentTarget.style.color = event.ceremony_status === 'fechada' ? '#8B0000' : '#c8c2b8'}
+                      >
+                        ⊘
+                      </button>
+                      <button
+                        title="Arquivar cerimônia"
                         onClick={e => { e.stopPropagation(); handleDeactivate(event.id); }}
                         style={{ ...s.cardActionBtn, color: '#c8a8a8' }}
                         onMouseEnter={e => e.currentTarget.style.color = '#8a7a58'}
@@ -599,7 +640,7 @@ export default function Events() {
               style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', padding: 0, marginBottom: showInactive ? '2rem' : 0 }}
             >
               <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c' }}>
-                {showInactive ? '▾' : '▸'} Cerimônias concluídas ({inactiveEvents.length})
+                {showInactive ? '▾' : '▸'} Cerimônias arquivadas ({inactiveEvents.length})
               </span>
             </button>
 
@@ -654,7 +695,7 @@ export default function Events() {
 
                       <div style={{ borderTop: '0.5px dashed #c2b59b', paddingTop: '0.5rem', marginTop: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ color: '#9a8a7a', fontSize: '0.65rem', fontFamily: 'sans-serif', letterSpacing: '1px' }}>
-                          CONCLUÍDA
+                          ARQUIVADA
                         </span>
                         <div style={{ display: 'flex', gap: '4px' }}>
                           <button

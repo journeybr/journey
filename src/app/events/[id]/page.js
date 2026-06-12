@@ -1298,8 +1298,9 @@ export default function EventDetail({ params }) {
     { value: 'Ok Manual', label: 'Ok Manual', icon: '🛡️', color: '#8e44ad' }
   ];
 
-  const confirmados = participants.filter(p => p.status === 'Confirmado');
-  const intencao = participants.filter(p => p.status === 'intenção de ir');
+  const filaEspera = participants.filter(p => p.waitlist_at && p.status !== 'desistiu');
+  const confirmados = participants.filter(p => p.status === 'Confirmado' && !p.waitlist_at);
+  const intencao = participants.filter(p => p.status === 'intenção de ir' && !p.waitlist_at);
   const iniciais = participants.filter(p => p.status === 'desistiu');
 
   const activeParticipants = [...confirmados, ...intencao];
@@ -1307,13 +1308,13 @@ export default function EventDetail({ params }) {
   const day1ConfirmadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
   const day1ReservadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
   const day1PrimeiraVez = day1Active.filter(p => p.contacts?.primeira_vez).length;
-  const day1TotalCount = participants.filter(p => p.status !== 'desistiu' && p.date1_confirmed).length;
+  const day1TotalCount = activeParticipants.filter(p => p.date1_confirmed).length;
   const day1Stats = { confirmados: day1ConfirmadosCount, reservados: day1ReservadosCount, total: day1TotalCount, primeiraVez: day1PrimeiraVez };
   const day2Active = activeParticipants.filter(p => p.date2_confirmed);
   const day2ConfirmadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
   const day2ReservadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
   const day2PrimeiraVez = day2Active.filter(p => p.contacts?.primeira_vez).length;
-  const day2TotalCount = participants.filter(p => p.status !== 'desistiu' && p.date2_confirmed).length;
+  const day2TotalCount = activeParticipants.filter(p => p.date2_confirmed).length;
   const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2TotalCount, primeiraVez: day2PrimeiraVez };
 
   const renderParticipantRow = (p, isSimplified = false) => {
@@ -1821,6 +1822,36 @@ export default function EventDetail({ params }) {
             </div>
           </div>
         )}
+
+            {/* GRUPO 3: FILA DE ESPERA */}
+            {filaEspera.length > 0 && (
+              <div style={{ marginTop: '2rem' }}>
+                <div style={s.sectionHeader}>
+                  <div style={s.sectionTitle}>⏳ Fila de Espera ({filaEspera.length})</div>
+                </div>
+                <div style={{ marginBottom: '2.5rem' }}>
+                  {[...filaEspera]
+                    .sort((a, b) => new Date(a.waitlist_at) - new Date(b.waitlist_at))
+                    .map((p, i) => {
+                      const dataHora = new Date(p.waitlist_at).toLocaleString('pt-BR', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        timeZone: 'America/Sao_Paulo',
+                      });
+                      return (
+                        <div key={p.contact_id} style={{
+                          padding: '0.6rem 0', borderBottom: '0.5px dashed #d0cbc2',
+                          display: 'flex', alignItems: 'center', gap: '0.8rem',
+                          fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#5a5248',
+                        }}>
+                          <span style={{ color: '#b0a898', minWidth: '1.5rem', textAlign: 'right' }}>{i + 1}.</span>
+                          <span style={{ flex: 1 }}>{p.contacts?.name || 'Desconhecido'}</span>
+                          <span style={{ color: '#9a9288', fontSize: '11px' }}>{dataHora}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
         {/* Assinatura decorativa no rodapé */}
         <div style={s.cornerDeco}>journey • moleskine page</div>
