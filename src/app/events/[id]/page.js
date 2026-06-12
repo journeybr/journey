@@ -1274,6 +1274,16 @@ export default function EventDetail({ params }) {
     }
   }
 
+  async function promoverDaFila(contactId) {
+    if (!confirm('Mover esta pessoa para a lista oficial de inscrições?')) return;
+    const { error } = await supabase
+      .from('event_participants')
+      .update({ waitlist_at: null })
+      .match({ event_id: eventId, contact_id: contactId });
+    if (error) { alert('Erro: ' + error.message); return; }
+    setParticipants(prev => prev.map(p => p.contact_id === contactId ? { ...p, waitlist_at: null } : p));
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push('/login');
@@ -1837,6 +1847,8 @@ export default function EventDetail({ params }) {
                         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                         timeZone: 'America/Sao_Paulo',
                       });
+                      const dias = p.date1_confirmed && p.date2_confirmed ? 'D1 e D2'
+                        : p.date1_confirmed ? 'D1' : p.date2_confirmed ? 'D2' : '—';
                       return (
                         <div key={p.contact_id} style={{
                           padding: '0.6rem 0', borderBottom: '0.5px dashed #d0cbc2',
@@ -1845,7 +1857,17 @@ export default function EventDetail({ params }) {
                         }}>
                           <span style={{ color: '#b0a898', minWidth: '1.5rem', textAlign: 'right' }}>{i + 1}.</span>
                           <span style={{ flex: 1 }}>{p.contacts?.name || 'Desconhecido'}</span>
-                          <span style={{ color: '#9a9288', fontSize: '11px' }}>{dataHora}</span>
+                          <span style={{ color: '#9a9288', fontSize: '11px', minWidth: '44px', textAlign: 'center' }}>{dias}</span>
+                          <span style={{ color: '#b0a898', fontSize: '11px' }}>{dataHora}</span>
+                          <button
+                            title="Mover para lista oficial"
+                            onClick={() => promoverDaFila(p.contact_id)}
+                            style={{ background: 'none', border: '0.5px solid #c2b59b', borderRadius: '2px', cursor: 'pointer', padding: '2px 7px', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#7a7268', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}
+                            onMouseEnter={e => { e.currentTarget.style.background = '#f0ece4'; e.currentTarget.style.color = '#3a3530'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#7a7268'; }}
+                          >
+                            + lista
+                          </button>
                         </div>
                       );
                     })}
