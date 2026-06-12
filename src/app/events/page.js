@@ -136,7 +136,7 @@ const s = {
     cursor: 'pointer',
     padding: '2px 5px',
     fontFamily: "'Courier Prime', monospace",
-    fontSize: '12px',
+    fontSize: '16px',
     lineHeight: 1,
     transition: 'color 0.15s',
   },
@@ -595,7 +595,7 @@ export default function Events() {
                       <button
                         title={event.ceremony_status === 'lista_espera' ? 'Remover Lista de Espera' : 'Colocar em Lista de Espera'}
                         onClick={e => { e.stopPropagation(); handleChangeStatus(event.id, event.ceremony_status === 'lista_espera' ? null : 'lista_espera'); }}
-                        style={{ ...s.cardActionBtn, color: event.ceremony_status === 'lista_espera' ? '#c8a830' : '#c8c2b8', fontSize: '12px' }}
+                        style={{ ...s.cardActionBtn, color: event.ceremony_status === 'lista_espera' ? '#c8a830' : '#c8c2b8' }}
                         onMouseEnter={e => e.currentTarget.style.color = '#a88020'}
                         onMouseLeave={e => e.currentTarget.style.color = event.ceremony_status === 'lista_espera' ? '#c8a830' : '#c8c2b8'}
                       >
@@ -604,7 +604,7 @@ export default function Events() {
                       <button
                         title={event.ceremony_status === 'fechada' ? 'Reabrir para Inscrições' : 'Fechar para Novas Inscrições'}
                         onClick={e => { e.stopPropagation(); handleChangeStatus(event.id, event.ceremony_status === 'fechada' ? null : 'fechada'); }}
-                        style={{ ...s.cardActionBtn, color: event.ceremony_status === 'fechada' ? '#8B0000' : '#c8c2b8', fontSize: '12px' }}
+                        style={{ ...s.cardActionBtn, color: event.ceremony_status === 'fechada' ? '#8B0000' : '#c8c2b8' }}
                         onMouseEnter={e => e.currentTarget.style.color = '#8B0000'}
                         onMouseLeave={e => e.currentTarget.style.color = event.ceremony_status === 'fechada' ? '#8B0000' : '#c8c2b8'}
                       >
