@@ -312,14 +312,33 @@ export default function PublicFicha() {
 
         const firstName = (fd.nome_completo || 'Viajante').trim().split(' ')[0];
         const logEntry = { at: new Date().toISOString(), by: firstName, msg: `${firstName} preencheu a ficha de triagem`, type: 'ficha' };
-        const { data: parts } = await supabase
+
+        // Find participants to log to. If none by aid (e.g. placeholder contact), fall back to phone/CPF.
+        let { data: parts } = await supabase
           .from('event_participants')
-          .select('event_id, enrollment_log, events(active)')
+          .select('contact_id, event_id, enrollment_log, events(active)')
           .eq('contact_id', aid);
+
+        if (!parts?.length) {
+          const cleanPhone = fd.telefone?.replace(/\D/g, '') || '';
+          const cleanCpf   = (fd.cpf || '').replace(/\D/g, '');
+          const orClauses  = [cleanPhone && `phone.eq.${cleanPhone}`, cleanCpf && `cpf.eq.${cleanCpf}`].filter(Boolean).join(',');
+          if (orClauses) {
+            const { data: altContacts } = await supabase.from('contacts').select('id').or(orClauses).neq('id', aid);
+            if (altContacts?.length) {
+              const { data: altParts } = await supabase
+                .from('event_participants')
+                .select('contact_id, event_id, enrollment_log, events(active)')
+                .in('contact_id', altContacts.map(c => c.id));
+              if (altParts?.length) parts = altParts;
+            }
+          }
+        }
+
         for (const part of (parts || []).filter(p => p.events?.active !== false)) {
           await supabase.from('event_participants')
             .update({ enrollment_log: [...(part.enrollment_log || []), logEntry] })
-            .eq('contact_id', aid)
+            .eq('contact_id', part.contact_id)
             .eq('event_id', part.event_id);
         }
 
