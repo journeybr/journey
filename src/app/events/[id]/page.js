@@ -1505,7 +1505,7 @@ export default function EventDetail({ params }) {
               }
               toggleCheck(p.contact_id, 'preparacao_enviada', p.preparacao_enviada);
             }}
-            title={p.preparacao_enviada ? 'Preparação enviada (clique para desmarcar)' : 'Enviar preparação por WhatsApp'}
+            title={p.preparacao_enviada ? 'Etapa Inicial da Cerimônia enviada (clique para desmarcar)' : 'Enviar Etapa Inicial da Cerimônia por WhatsApp'}
           >
             <DocumentIcon active={p.preparacao_enviada} />
           </div>
@@ -1624,7 +1624,7 @@ export default function EventDetail({ params }) {
                 toggleCheck(p.contact_id, 'preparacao_enviada', p.preparacao_enviada);
               }}
               style={{ cursor: 'pointer', color: p.preparacao_enviada ? '#5d9470' : '#c0b8b0', display: 'inline-flex', alignItems: 'center' }}
-              title={p.preparacao_enviada ? 'Preparação enviada' : 'Enviar preparação'}
+              title={p.preparacao_enviada ? 'Etapa Inicial da Cerimônia enviada' : 'Enviar Etapa Inicial da Cerimônia'}
             >
               <DocumentIcon active={p.preparacao_enviada} />
             </span>
@@ -1803,7 +1803,7 @@ export default function EventDetail({ params }) {
                       <div>participante</div><div>dias</div><div>vaga</div>
                       <div style={{ textAlign: 'center' }}>remédio</div>
                       <div style={{ textAlign: 'center' }}>pago</div><div style={{ textAlign: 'center' }}>status</div>
-                      <div style={{ textAlign: 'center' }}>prep</div>
+                      <div style={{ textAlign: 'center' }}>inicial</div>
                       <div style={{ textAlign: 'center' }}>end</div>
                       <div style={{ textAlign: 'center' }}>ações</div>
                     </div>
@@ -1838,7 +1838,7 @@ export default function EventDetail({ params }) {
                       <div>participante</div><div>dias</div><div>vaga</div>
                       <div style={{ textAlign: 'center' }}>remédio</div>
                       <div style={{ textAlign: 'center' }}>pago</div><div style={{ textAlign: 'center' }}>status</div>
-                      <div style={{ textAlign: 'center' }}>prep</div>
+                      <div style={{ textAlign: 'center' }}>inicial</div>
                       <div style={{ textAlign: 'center' }}>end</div>
                       <div style={{ textAlign: 'center' }}>ações</div>
                     </div>
