@@ -2070,8 +2070,17 @@ export default function EventDetail({ params }) {
                     )}
                     {unchecked.length > 0 && (
                       <div style={{ fontSize: '10px', color: '#9a9288', lineHeight: 1.4 }}>
-                        <div style={{ fontWeight: 700, color: '#7a7268', marginBottom: '2px' }}>✗ Não marcado ({unchecked.length})</div>
-                        {unchecked.map((u, i) => <div key={i}>• {u}</div>)}
+                        {unchecked.length <= 2 ? (<>
+                          <div style={{ fontWeight: 700, color: '#7a7268', marginBottom: '2px' }}>✗ Não marcado</div>
+                          {unchecked.map((u, i) => <div key={i}>• {u}</div>)}
+                        </>) : (
+                          <button
+                            onClick={() => { setActiveFichaContact(rContact); setRemedioModal(null); }}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#7a7268', textAlign: 'left', textDecoration: 'underline', lineHeight: 1.4 }}
+                          >
+                            ✗ {unchecked.length} itens não marcados — ver ficha de triagem
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
