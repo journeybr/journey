@@ -2125,7 +2125,7 @@ export default function EventDetail({ params }) {
                     onClick={() => { setActiveFichaContact(rContact); setRemedioModal(null); }}
                     style={{ ...btnBase }}
                   >
-                    <EyeIcon /> Ver ficha médica
+                    <EyeIcon /> Ver ficha de triagem
                   </button>
                 )}
               </div>
