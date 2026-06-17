@@ -476,6 +476,26 @@ const s = {
   },
 };
 
+function computeFichaAlerts(contact) {
+  const fd = contact?.medical_form_data;
+  if (!fd) return null;
+  const meds = contact?.medications_list || [];
+  const redFlags = [];
+  if (fd.sec2_historico) redFlags.push('Histórico psiquiátrico informado' + (fd.sec2_historico_obs ? `: ${fd.sec2_historico_obs}` : ''));
+  if (fd.sec4b_dependencia) redFlags.push('Dependência química informada');
+  if (fd.sec5_duvidas) redFlags.push('Tem dúvidas no formulário');
+  const hasMeds = fd.sec4b_remedio === false;
+  const medsList = meds.map(m => [m.name, m.dosage, m.frequency].filter(Boolean).join(' ')).filter(Boolean);
+  const outros = fd.sec4c_outros?.trim() || '';
+  const unchecked = [];
+  for (const sec of FICHA_SECTIONS) {
+    for (const item of (sec.items || [])) {
+      if (item.pos && !fd[item.k] && item.k !== 'sec4b_remedio') unchecked.push(item.t);
+    }
+  }
+  return { redFlags, hasMeds, medsList, outros, unchecked };
+}
+
 function computeEffectiveRemedioStatus(p) {
   if (p.remedio_status === 'Ok Manual') return 'Ok Manual';
   if (p.remedio_status === 'Acompanhar') return 'Acompanhar';
@@ -2022,6 +2042,41 @@ export default function EventDetail({ params }) {
                   {statusLabel}
                 </div>
               </div>
+
+              {/* Resumo ficha */}
+              {hasFicha && (() => {
+                const alerts = computeFichaAlerts(rContact);
+                if (!alerts) return null;
+                const { redFlags, hasMeds, medsList, outros, unchecked } = alerts;
+                const hasAnything = redFlags.length > 0 || hasMeds || unchecked.length > 0;
+                if (!hasAnything) return null;
+                return (
+                  <div style={{ padding: '0.75rem 1.5rem', borderBottom: '0.5px solid #d0cbc2', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                    {redFlags.map((f, i) => (
+                      <div key={i} style={{ display: 'flex', gap: '5px', alignItems: 'flex-start', fontSize: '10px', color: '#b93030', lineHeight: 1.4 }}>
+                        <span style={{ flexShrink: 0 }}>⚠</span><span>{f}</span>
+                      </div>
+                    ))}
+                    {hasMeds && (
+                      <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start', fontSize: '10px', color: '#7a5018', lineHeight: 1.4 }}>
+                        <span style={{ flexShrink: 0 }}>💊</span>
+                        <div>
+                          <span style={{ fontWeight: 700 }}>Usa medicamentos</span>
+                          {medsList.map((m, i) => <div key={i} style={{ color: '#6b4a18' }}>• {m}</div>)}
+                          {outros && <div style={{ color: '#6b4a18' }}>• {outros}</div>}
+                          {!medsList.length && !outros && <div style={{ color: '#9a7040' }}>(lista não preenchida)</div>}
+                        </div>
+                      </div>
+                    )}
+                    {unchecked.length > 0 && (
+                      <div style={{ fontSize: '10px', color: '#9a9288', lineHeight: 1.4 }}>
+                        <div style={{ fontWeight: 700, color: '#7a7268', marginBottom: '2px' }}>✗ Não marcado ({unchecked.length})</div>
+                        {unchecked.map((u, i) => <div key={i}>• {u}</div>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Ações */}
               <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
