@@ -64,7 +64,7 @@ function computeExpected(p, allParticipants) {
   return (p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
 }
 
-function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel }) {
+function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel, onOpenLog }) {
   const out = direction === 'out';
   const otherName = out ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—');
   const color = out ? '#b07a4a' : '#5d8a6a';
@@ -77,6 +77,10 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel }) 
         <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
           {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · {statusLabel} · $ {Number(t.amount).toFixed(2)}
         </span>
+        {t.log?.length > 0 && (
+          <button onClick={e => { e.stopPropagation(); onOpenLog(); }} title="Histórico"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color, opacity: 0.7, fontSize: '11px', padding: '0 2px', lineHeight: 1 }}>≡</button>
+        )}
         {!out && (t.status !== 'pago' ? (
           <button onClick={e => { e.stopPropagation(); onMarkPaid(); }} title="Marcar transferência como paga"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
@@ -788,7 +792,8 @@ export default function PagamentosPage() {
                           <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
                             onMarkPaid={() => markTransferPaid(t.id)}
                             onRevert={() => revertTransferPaid(t.id)}
-                            onCancel={() => cancelTransfer(t.id)} />
+                            onCancel={() => cancelTransfer(t.id)}
+                            onOpenLog={() => setLogModal({ name: t.from_contact?.nickname || t.from_contact?.name || '—', log: t.log || [], isMerged: true })} />
                         ))}
                       </div>
                     );
@@ -857,7 +862,8 @@ export default function PagamentosPage() {
                           <TransferLine key={t.id} t={t} direction={t._dir} isLast={false}
                             onMarkPaid={() => markTransferPaid(t.id)}
                             onRevert={() => revertTransferPaid(t.id)}
-                            onCancel={() => cancelTransfer(t.id)} />
+                            onCancel={() => cancelTransfer(t.id)}
+                            onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
                         ))}
                         <div style={{ padding: '0.6rem 1rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -938,6 +944,10 @@ export default function PagamentosPage() {
                             {rec.date ? ` · ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
                             {rec.cancelled ? ' (cancelado)' : ''}
                           </span>
+                          {(p.payment_log?.length > 0) && (
+                            <button onClick={e => { e.stopPropagation(); setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged }); }}
+                              title="Histórico" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9288', fontSize: '11px', padding: '0 2px', lineHeight: 1 }}>≡</button>
+                          )}
                           {!rec.cancelled && (
                             <button onClick={e => { e.stopPropagation(); cancelInstallmentPayment(p.contact_id, p.event_id, i); }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Cancelar">×</button>
@@ -952,7 +962,8 @@ export default function PagamentosPage() {
                           <TransferLine key={t.id} t={t} direction={t._dir} isLast={noMoreBlocksAfter && i === allT.length - 1}
                             onMarkPaid={() => markTransferPaid(t.id)}
                             onRevert={() => revertTransferPaid(t.id)}
-                            onCancel={() => cancelTransfer(t.id)} />
+                            onCancel={() => cancelTransfer(t.id)}
+                            onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
                         ));
                       })()}
 
