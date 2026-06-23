@@ -77,13 +77,13 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel }) 
         {out ? '↗ transferido para' : '↙ recebido de'} {otherName} · $ {Number(t.amount).toFixed(2)} · {statusLabel}
         {t.observation ? ` · "${t.observation}"` : ''}
       </span>
-      {t.status !== 'pago' ? (
+      {!out && (t.status !== 'pago' ? (
         <button onClick={e => { e.stopPropagation(); onMarkPaid(); }} title="Marcar transferência como paga"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
       ) : (
         <button onClick={e => { e.stopPropagation(); onRevert(); }} title="Desfazer pagamento da transferência"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '13px', padding: '0 2px', lineHeight: 1 }}>↺</button>
-      )}
+      ))}
       <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancelar transferência"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
     </div>
