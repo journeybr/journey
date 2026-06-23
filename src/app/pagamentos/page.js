@@ -787,7 +787,6 @@ export default function PagamentosPage() {
                   }
 
                   const name = p.contacts?.nickname || p.contacts?.name || '—';
-                  const ceremonyName = p.events?.name || '—';
                   const records = p.payment_records || [];
                   const transferKey = `${p.contact_id}-${p.event_id}`;
                   const outTransfers = transfersOutMap[transferKey] || [];
@@ -798,26 +797,6 @@ export default function PagamentosPage() {
                   const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);
                   const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
                   const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar) : null;
-                  const isCross = !p._merged && (() => {
-                    const others = participants.filter(x => x.contact_id === p.contact_id && x.event_id !== p.event_id && x.events?.active !== false);
-                    const thisDays = [];
-                    if (p.date1_confirmed && p.events?.date) thisDays.push(p.events.date);
-                    if (p.date2_confirmed && p.events?.date2) thisDays.push(p.events.date2);
-                    for (const op of others) {
-                      const od = [];
-                      if (op.date1_confirmed && op.events?.date) od.push(op.events.date);
-                      if (op.date2_confirmed && op.events?.date2) od.push(op.events.date2);
-                      for (const d1 of thisDays) for (const d2 of od)
-                        if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) return true;
-                    }
-                    return false;
-                  })();
-
-                  const CeremonyTag = () => (
-                    <span style={{ fontSize: '9px', letterSpacing: '0.08em', color: (p._merged || isCross) ? '#7a68a4' : '#9a9288', background: (p._merged || isCross) ? '#f0eef8' : '#f0ece6', border: `0.5px solid ${(p._merged || isCross) ? '#c8b8e8' : '#d0cbc2'}`, borderRadius: '2px', padding: '1px 6px', fontStyle: 'italic', flexShrink: 0 }}>
-                      {p._merged ? p._ceremonyLabel : ceremonyName}{!p._merged && isCross ? ' ½' : ''}
-                    </span>
-                  );
 
                   const openPaymentModal = () => setPaymentModal({
                     contactId: p.contact_id,
@@ -840,7 +819,6 @@ export default function PagamentosPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', borderBottom: '0.5px dashed #e8b87a', cursor: 'pointer' }} onClick={openPaymentModal}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
-                            <CeremonyTag />
                             <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: name, toContactId: '', amount: '', observation: '' }); }}
                               title="Transferir"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '15px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
@@ -916,7 +894,6 @@ export default function PagamentosPage() {
                         style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: (records.length > 0 && (isParcelado || isPago)) || (outTransfers.length + inTransfers.length > 0) ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530', flexShrink: 0 }}>{name}</span>
-                          <CeremonyTag />
                           {p.payment_observation && (
                             <button onClick={e => { e.stopPropagation(); setObsModal({ name, text: p.payment_observation }); }}
                               title="Ver observação"
