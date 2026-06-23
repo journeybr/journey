@@ -74,7 +74,7 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel }) 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
       <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-        {out ? '↗ transferido para' : '↙ recebido de'} {otherName} · $ {Number(t.amount).toFixed(2)} · {statusLabel}
+        {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · $ {Number(t.amount).toFixed(2)} · {statusLabel}
         {t.observation ? ` · "${t.observation}"` : ''}
       </span>
       {!out && (t.status !== 'pago' ? (
@@ -775,9 +775,6 @@ export default function PagamentosPage() {
                       <div key={p.id} style={{ marginBottom: '10px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px 2px 0 0' }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
-                          <span style={{ fontSize: '9px', letterSpacing: '0.08em', color: '#9a9288', background: '#f0ece6', border: '0.5px solid #d0cbc2', borderRadius: '2px', padding: '1px 6px', fontStyle: 'italic' }}>
-                            {p.events?.name || '—'}
-                          </span>
                         </div>
                         {list.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
