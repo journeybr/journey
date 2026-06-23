@@ -759,20 +759,15 @@ export default function PagamentosPage() {
                     const fromName = t.from_contact?.nickname || t.from_contact?.name || '—';
                     return (
                       <div key={p.id} style={{ marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#f5f0f8', border: '0.5px solid #c8b8e8', borderRadius: t.observation ? '2px 2px 0 0' : '2px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.65rem 1rem', background: '#f5f0f8', border: '0.5px solid #c8b8e8', borderRadius: '2px 2px 0 0' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
-                            <span style={{ fontSize: '9px', letterSpacing: '0.08em', color: '#7a68a4', background: '#f0eef8', border: '0.5px solid #c8b8e8', borderRadius: '2px', padding: '1px 6px', fontStyle: 'italic' }}>
-                              ⇄ {p.events?.name || '—'} · transferência de {fromName}
+                            <span style={{ fontSize: '9px', color: '#9a8aa8', fontStyle: 'italic', letterSpacing: '0.02em' }}>
+                              ⇄ transferência de {fromName} · {p.events?.name || '—'}{t.observation ? ` · "${t.observation}"` : ''}
                             </span>
                           </div>
                           <span style={{ fontSize: '10px', color: '#7a68a4', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {Number(t.amount).toFixed(2)}</span>
                         </div>
-                        {t.observation && (
-                          <div style={{ padding: '0.4rem 1rem', borderLeft: '0.5px solid #c8b8e8', borderRight: '0.5px solid #c8b8e8', borderBottom: '0.5px dashed #c8b8e8', fontSize: '10px', color: '#6a5a40', fontStyle: 'italic' }}>
-                            "{t.observation}"
-                          </div>
-                        )}
                         <div style={{ borderLeft: '0.5px solid #c8b8e8', borderRight: '0.5px solid #c8b8e8', borderBottom: '0.5px solid #c8b8e8', borderRadius: '0 0 2px 2px', padding: '0.5rem 1rem', display: 'flex', gap: '6px' }}>
                           {t.status !== 'pago' ? (
                             <button onClick={() => markTransferPaid(t.id)}
