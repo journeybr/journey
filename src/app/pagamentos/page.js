@@ -771,10 +771,12 @@ export default function PagamentosPage() {
                   if (p._isTransferOnly) {
                     const name = p.contacts?.nickname || p.contacts?.name || '—';
                     const list = p.transfersList;
+                    const total = list.reduce((s, t) => s + Number(t.amount), 0);
                     return (
                       <div key={p.id} style={{ marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px 2px 0 0' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px 2px 0 0' }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                          <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
                         </div>
                         {list.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
