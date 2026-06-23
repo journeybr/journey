@@ -78,8 +78,10 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel, on
           {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · {statusLabel} · $ {Number(t.amount).toFixed(2)}
         </span>
         {t.log?.length > 0 && (
-          <button onClick={e => { e.stopPropagation(); onOpenLog(); }} title="Histórico"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color, opacity: 0.7, fontSize: '11px', padding: '0 2px', lineHeight: 1 }}>≡</button>
+          <button onClick={e => { e.stopPropagation(); onOpenLog(); }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color, opacity: 0.75, letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
+            histórico{t.log.length > 1 ? ` (${t.log.length})` : ''}
+          </button>
         )}
         {!out && (t.status !== 'pago' ? (
           <button onClick={e => { e.stopPropagation(); onMarkPaid(); }} title="Marcar transferência como paga"
@@ -946,7 +948,9 @@ export default function PagamentosPage() {
                           </span>
                           {(p.payment_log?.length > 0) && (
                             <button onClick={e => { e.stopPropagation(); setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged }); }}
-                              title="Histórico" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9a9288', fontSize: '11px', padding: '0 2px', lineHeight: 1 }}>≡</button>
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
+                              histórico{p.payment_log.length > 1 ? ` (${p.payment_log.length})` : ''}
+                            </button>
                           )}
                           {!rec.cancelled && (
                             <button onClick={e => { e.stopPropagation(); cancelInstallmentPayment(p.contact_id, p.event_id, i); }}
