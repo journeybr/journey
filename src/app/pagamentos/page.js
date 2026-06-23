@@ -72,20 +72,26 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel }) 
   const border = out ? '#e0c8a8' : '#bcdfc8';
   const statusLabel = t.status === 'pago' ? 'pago' : t.status === 'conferir pagamento' ? 'conferir' : 'pendente';
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
-      <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-        {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · $ {Number(t.amount).toFixed(2)} · {statusLabel}
-        {t.observation ? ` · "${t.observation}"` : ''}
-      </span>
-      {!out && (t.status !== 'pago' ? (
-        <button onClick={e => { e.stopPropagation(); onMarkPaid(); }} title="Marcar transferência como paga"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
-      ) : (
-        <button onClick={e => { e.stopPropagation(); onRevert(); }} title="Desfazer pagamento da transferência"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '13px', padding: '0 2px', lineHeight: 1 }}>↺</button>
-      ))}
-      <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancelar transferência"
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
+    <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: t.observation ? '0.4rem 1rem 1px' : '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+          {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · {statusLabel} · $ {Number(t.amount).toFixed(2)}
+        </span>
+        {!out && (t.status !== 'pago' ? (
+          <button onClick={e => { e.stopPropagation(); onMarkPaid(); }} title="Marcar transferência como paga"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
+        ) : (
+          <button onClick={e => { e.stopPropagation(); onRevert(); }} title="Desfazer pagamento da transferência"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '13px', padding: '0 2px', lineHeight: 1 }}>↺</button>
+        ))}
+        <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancelar transferência"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
+      </div>
+      {t.observation && (
+        <div style={{ padding: '0 1rem 0.4rem', fontSize: '9px', color, fontStyle: 'italic', opacity: 0.85 }}>
+          "{t.observation}"
+        </div>
+      )}
     </div>
   );
 }
