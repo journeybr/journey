@@ -102,23 +102,15 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel, on
   );
 }
 
-function LogFooter({ log, fmtLog, onOpenModal, onRevert }) {
+function LogFooter({ log, fmtLog, onOpenModal }) {
   const last = log[log.length - 1];
-  const canRevert = !!last?.prev;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ fontSize: '9px', color: '#b0a898', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5, flex: 1 }}>
-          {fmtLog(last)}
-        </span>
-        {canRevert && onRevert && (
-          <button onClick={e => { e.stopPropagation(); if (confirm('Retornar ao status anterior?')) onRevert(); }}
-            title="Retornar ao status anterior"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '15px', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>↺</button>
-        )}
-      </div>
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+      <span style={{ fontSize: '9px', color: '#b0a898', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5 }}>
+        {fmtLog(last)}
+      </span>
       <button onClick={e => { e.stopPropagation(); onOpenModal(); }}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em', padding: '0', textDecoration: 'underline', textUnderlineOffset: '2px', textAlign: 'left' }}>
+        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em', padding: '0', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
         histórico{log.length > 1 ? ` (${log.length})` : ''}
       </button>
     </div>
@@ -896,8 +888,7 @@ export default function PagamentosPage() {
                           )}
                           {(p.payment_log?.length > 0) && (
                             <LogFooter log={p.payment_log} fmtLog={fmtLog}
-                              onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged })}
-                              onRevert={() => revertEntry(p)} />
+                              onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />
                           )}
                         </div>
                       </div>
@@ -947,7 +938,7 @@ export default function PagamentosPage() {
                             {rec.cancelled ? ' (cancelado)' : ''}
                           </span>
                           {(p.payment_log?.length > 0) && (
-                            <button onClick={e => { e.stopPropagation(); setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged }); }}
+                            <button onClick={e => { e.stopPropagation(); setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null }); }}
                               style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
                               histórico{p.payment_log.length > 1 ? ` (${p.payment_log.length})` : ''}
                             </button>
@@ -1015,8 +1006,7 @@ export default function PagamentosPage() {
                       {(p.payment_log?.length > 0) && (
                         <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.35rem 1rem' }}>
                           <LogFooter log={p.payment_log} fmtLog={fmtLog}
-                            onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged })}
-                            onRevert={() => revertEntry(p)} />
+                            onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />
                         </div>
                       )}
                     </div>
@@ -1215,9 +1205,13 @@ export default function PagamentosPage() {
                         </a>
                       )}
                     </div>
-                    {entry.prev && !logModal.isMerged && (
+                    {entry.prev && (logModal.isMerged ? (i === 0 && logModal.mergedParticipant) : true) && (
                       <button
-                        onClick={() => { if (confirm(`Reverter para "${prevToLabel(entry.prev)}"?`)) revertToLogEntry(logModal.contactId, logModal.eventId, entry); }}
+                        onClick={() => {
+                          if (!confirm(`Reverter para "${prevToLabel(entry.prev)}"?`)) return;
+                          if (logModal.isMerged) { revertEntry(logModal.mergedParticipant); setLogModal(null); }
+                          else revertToLogEntry(logModal.contactId, logModal.eventId, entry);
+                        }}
                         title={`Reverter para o estado antes desta ação (${prevToLabel(entry.prev)})`}
                         style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '15px', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>↺</button>
                     )}
