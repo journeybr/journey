@@ -41,6 +41,7 @@ const STATUS_GROUPS = [
 // Cross-ceremony pricing: if contact has a day in another active ceremony within 29 days,
 // expected per ceremony = price_2d / 2 (instead of price_1d)
 function computeExpected(p, allParticipants) {
+  if (!p.date1_confirmed && !p.date2_confirmed) return null;
   const otherParts = allParticipants.filter(x =>
     x.contact_id === p.contact_id &&
     x.event_id !== p.event_id &&
@@ -185,7 +186,7 @@ export default function PagamentosPage() {
         .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,active)')
         .eq('cancelled', false),
     ]);
-    const active = (data || []).filter(p => p.events?.active !== false);
+    const active = (data || []).filter(p => p.events?.active !== false && (p.date1_confirmed || p.date2_confirmed));
     setParticipants(active);
     setContactsList(contactsData || []);
     setTransfers((transfersData || []).filter(t => t.events?.active !== false));
