@@ -105,12 +105,12 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel, on
 function LogFooter({ log, fmtLog, onOpenModal }) {
   const last = log[log.length - 1];
   return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: '9px', color: '#b0a898', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <span style={{ flex: 1, fontSize: '9px', color: '#b0a898', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5 }}>
         {fmtLog(last)}
       </span>
       <button onClick={e => { e.stopPropagation(); onOpenModal(); }}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em', padding: '0', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
+        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap', flexShrink: 0 }}>
         histórico{log.length > 1 ? ` (${log.length})` : ''}
       </button>
     </div>
