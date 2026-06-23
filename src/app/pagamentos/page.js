@@ -563,20 +563,32 @@ export default function PagamentosPage() {
     return m;
   }, [transfers]);
 
-  // Transferências cujo responsável não é participante deste evento — entram como linha própria.
+  // Transferências cujo responsável não é participante deste evento — entram como linha própria,
+  // agrupadas por pessoa + cerimônia (uma pessoa pode receber de várias outras).
   const orphanTransferEntries = useMemo(() => {
-    return transfers
-      .filter(t => !participants.some(p => p.contact_id === t.to_contact_id && p.event_id === t.event_id))
-      .map(t => ({
-        _isTransferOnly: true,
-        id: `transfer-${t.id}`,
-        contact_id: t.to_contact_id,
-        event_id: t.event_id,
-        contacts: t.to_contact,
-        events: t.events,
-        payment_status: t.status === 'pago' ? 'pago' : t.status === 'conferir pagamento' ? 'conferir pagamento' : 'em aberto',
-        transfer: t,
-      }));
+    const groups = {};
+    transfers.forEach(t => {
+      const isOrphan = !participants.some(p => p.contact_id === t.to_contact_id && p.event_id === t.event_id);
+      if (!isOrphan) return;
+      const key = `${t.to_contact_id}-${t.event_id}`;
+      if (!groups[key]) {
+        groups[key] = {
+          _isTransferOnly: true,
+          id: `transfer-group-${key}`,
+          contact_id: t.to_contact_id,
+          event_id: t.event_id,
+          contacts: t.to_contact,
+          events: t.events,
+          transfersList: [],
+        };
+      }
+      groups[key].transfersList.push(t);
+    });
+    return Object.values(groups).map(g => {
+      const allPaid = g.transfersList.every(t => t.status === 'pago');
+      const anyConferir = g.transfersList.some(t => t.status === 'conferir pagamento');
+      return { ...g, payment_status: allPaid ? 'pago' : anyConferir ? 'conferir pagamento' : 'em aberto' };
+    });
   }, [transfers, participants]);
 
   const filteredOrphans = useMemo(() => {
@@ -588,8 +600,11 @@ export default function PagamentosPage() {
         if (!nm.includes(q)) return false;
       }
       if (dateFrom || dateTo) {
-        const log = o.transfer.log || [];
-        const lastLogAt = log.length ? log[log.length - 1].at : o.transfer.created_at;
+        const lastLogAt = o.transfersList.reduce((latest, t) => {
+          const log = t.log || [];
+          const at = log.length ? log[log.length - 1].at : t.created_at;
+          return (!latest || (at && at > latest)) ? at : latest;
+        }, null);
         if (!lastLogAt) return false;
         const d = lastLogAt.slice(0, 10);
         if (dateFrom && d < dateFrom) return false;
@@ -754,37 +769,22 @@ export default function PagamentosPage() {
                   <div style={{ fontSize: '10px', color: '#c0b8b0', fontStyle: 'italic', padding: '0.4rem 0' }}>nenhum</div>
                 ) : group.map(p => {
                   if (p._isTransferOnly) {
-                    const t = p.transfer;
                     const name = p.contacts?.nickname || p.contacts?.name || '—';
-                    const fromName = t.from_contact?.nickname || t.from_contact?.name || '—';
+                    const list = p.transfersList;
                     return (
                       <div key={p.id} style={{ marginBottom: '10px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.65rem 1rem', background: '#f5f0f8', border: '0.5px solid #c8b8e8', borderRadius: '2px 2px 0 0' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-                            <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
-                            <span style={{ fontSize: '9px', color: '#9a8aa8', fontStyle: 'italic', letterSpacing: '0.02em' }}>
-                              ⇄ transferência de {fromName} · {p.events?.name || '—'}{t.observation ? ` · "${t.observation}"` : ''}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: '10px', color: '#7a68a4', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {Number(t.amount).toFixed(2)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px 2px 0 0' }}>
+                          <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                          <span style={{ fontSize: '9px', letterSpacing: '0.08em', color: '#9a9288', background: '#f0ece6', border: '0.5px solid #d0cbc2', borderRadius: '2px', padding: '1px 6px', fontStyle: 'italic' }}>
+                            {p.events?.name || '—'}
+                          </span>
                         </div>
-                        <div style={{ borderLeft: '0.5px solid #c8b8e8', borderRight: '0.5px solid #c8b8e8', borderBottom: '0.5px solid #c8b8e8', borderRadius: '0 0 2px 2px', padding: '0.5rem 1rem', display: 'flex', gap: '6px' }}>
-                          {t.status !== 'pago' ? (
-                            <button onClick={() => markTransferPaid(t.id)}
-                              style={{ padding: '6px 10px', background: '#5d9470', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                              ✓ marcar como pago
-                            </button>
-                          ) : (
-                            <button onClick={() => revertTransferPaid(t.id)}
-                              style={{ padding: '6px 10px', background: 'transparent', border: '0.5px dashed #c8c2b8', color: '#9a9288', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                              ↺ desfazer
-                            </button>
-                          )}
-                          <button onClick={() => cancelTransfer(t.id)}
-                            style={{ padding: '6px 10px', background: 'transparent', color: '#c0392b', border: '0.5px solid #e8b0b0', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                            ✕ cancelar transferência
-                          </button>
-                        </div>
+                        {list.map((t, i) => (
+                          <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
+                            onMarkPaid={() => markTransferPaid(t.id)}
+                            onRevert={() => revertTransferPaid(t.id)}
+                            onCancel={() => cancelTransfer(t.id)} />
+                        ))}
                       </div>
                     );
                   }
