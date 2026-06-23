@@ -850,9 +850,9 @@ export default function PagamentosPage() {
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
                             <CeremonyTag />
                             <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: name, toContactId: '', amount: '', observation: '' }); }}
-                              title="Transferir parte ou todo o pagamento para outra pessoa"
-                              style={{ background: 'none', border: '0.5px solid #e8b87a', borderRadius: '2px', cursor: 'pointer', padding: '1px 5px', fontFamily: "'Courier Prime', monospace", fontSize: '8px', letterSpacing: '0.08em', color: '#9a9288', textTransform: 'uppercase', lineHeight: 1.6, flexShrink: 0 }}>
-                              ⇄ transferir
+                              title="Transferir"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '15px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
+                              ⇄
                             </button>
                           </div>
                           {expectedAmount != null && (
@@ -933,9 +933,9 @@ export default function PagamentosPage() {
                             </button>
                           )}
                           <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: name, toContactId: '', amount: '', observation: '' }); }}
-                            title="Transferir parte ou todo o pagamento para outra pessoa"
-                            style={{ background: 'none', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer', padding: '1px 5px', fontFamily: "'Courier Prime', monospace", fontSize: '8px', letterSpacing: '0.08em', color: '#9a9288', textTransform: 'uppercase', lineHeight: 1.6, flexShrink: 0 }}>
-                            ⇄ transferir
+                            title="Transferir"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '15px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
+                            ⇄
                           </button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px' }}>
