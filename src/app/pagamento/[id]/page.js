@@ -163,6 +163,8 @@ export default function PagamentoPage({ params }) {
   const [contactId, setContactId] = useState(null);
   const [contact, setContact] = useState(null);
   const [participants, setParticipants] = useState([]);
+  const [transfersOut, setTransfersOut] = useState([]);
+  const [transfersIn, setTransfersIn] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
@@ -184,19 +186,27 @@ export default function PagamentoPage({ params }) {
   }, [contactId]);
 
   async function fetchData() {
-    const [{ data: contactData }, { data: partsData }] = await Promise.all([
+    const [{ data: contactData }, { data: partsData }, { data: transfersData }] = await Promise.all([
       supabase.from('contacts').select('*').eq('id', contactId).single(),
       supabase
         .from('event_participants')
         .select('*, events(*)')
         .eq('contact_id', contactId)
         .not('status', 'eq', 'desistiu'),
+      supabase
+        .from('payment_transfers')
+        .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,active)')
+        .or(`from_contact_id.eq.${contactId},to_contact_id.eq.${contactId}`)
+        .eq('cancelled', false),
     ]);
 
     if (!contactData) { setNotFound(true); setLoading(false); return; }
     setContact(contactData);
     const active = (partsData || []).filter(p => p.events && p.events.active !== false);
     setParticipants(active);
+    const activeTransfers = (transfersData || []).filter(t => t.events?.active !== false);
+    setTransfersOut(activeTransfers.filter(t => t.from_contact_id === contactId));
+    setTransfersIn(activeTransfers.filter(t => t.to_contact_id === contactId));
     setLoading(false);
   }
 
@@ -212,9 +222,13 @@ export default function PagamentoPage({ params }) {
   const totalDays = reservedDays.length;
 
   const priceEvent = participants.find(p => p.events?.price_1d || p.events?.price_2d)?.events;
-  const price = totalDays >= 2
+  const basePrice = totalDays >= 2
     ? (priceEvent?.price_2d ?? null)
     : (priceEvent?.price_1d ?? null);
+
+  const sumOut = transfersOut.reduce((s, t) => s + Number(t.amount), 0);
+  const sumIn = transfersIn.reduce((s, t) => s + Number(t.amount), 0);
+  const price = basePrice != null ? (basePrice - sumOut + sumIn) : (sumIn > 0 ? sumIn : null);
 
   const firstName = (contact?.nickname || contact?.name || '').split(' ')[0];
 
@@ -245,8 +259,12 @@ export default function PagamentoPage({ params }) {
     const baseExt = {};
     if (obs) baseExt.payment_observation = obs;
 
-    await Promise.all(
-      participants.map(async p => {
+    const transferStatusData = option === 'upload'
+      ? { status: 'conferir pagamento', ...(comprovanteUrl ? { comprovante_url: comprovanteUrl } : {}) }
+      : { status: 'conferir pagamento', payment_method: 'Espécie' };
+
+    await Promise.all([
+      ...participants.map(async p => {
         const withLog = { ...statusData, ...baseExt, payment_log: [...(p.payment_log || []), logEntry] };
         const { error } = await supabase.from('event_participants').update(withLog)
           .match({ event_id: p.event_id, contact_id: p.contact_id });
@@ -255,8 +273,12 @@ export default function PagamentoPage({ params }) {
           await supabase.from('event_participants').update({ ...statusData, ...baseExt })
             .match({ event_id: p.event_id, contact_id: p.contact_id });
         }
-      })
-    );
+      }),
+      ...transfersIn.filter(t => t.status === 'pendente').map(async t => {
+        const withLog = { ...transferStatusData, ...(obs ? { observation: t.observation ? `${t.observation} | ${obs}` : obs } : {}), log: [...(t.log || []), logEntry] };
+        await supabase.from('payment_transfers').update(withLog).eq('id', t.id);
+      }),
+    ]);
 
     setDone(true);
   }
@@ -318,7 +340,9 @@ export default function PagamentoPage({ params }) {
         <span style={s.label}>Você está com vaga reservada para</span>
         {reservedDays.length === 0 ? (
           <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#9a9288', letterSpacing: '0.04em' }}>
-            Nenhum dia confirmado encontrado.
+            {sumIn > 0
+              ? 'Você não está com vaga própria — o valor abaixo é referente ao pagamento de outra pessoa.'
+              : 'Nenhum dia confirmado encontrado.'}
           </p>
         ) : (
           <div style={{ marginBottom: '1.5rem' }}>
@@ -341,6 +365,16 @@ export default function PagamentoPage({ params }) {
           <>
             <span style={s.label}>Valor</span>
             <p style={s.price}>US$ {Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            {sumIn > 0 && (
+              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#5d8a6a', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
+                Inclui US$ {sumIn.toFixed(2)} referente ao pagamento de {transfersIn.map(t => t.from_contact?.nickname || t.from_contact?.name).join(', ')}.
+              </p>
+            )}
+            {sumOut > 0 && (
+              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#b07a4a', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
+                Já descontado US$ {sumOut.toFixed(2)} transferido para {transfersOut.map(t => t.to_contact?.nickname || t.to_contact?.name).join(', ')}.
+              </p>
+            )}
           </>
         )}
 
