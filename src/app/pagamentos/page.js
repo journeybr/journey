@@ -940,7 +940,7 @@ export default function PagamentosPage() {
                       {(isParcelado || isPago) && records.map((rec, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#f5f0f8', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
                           <span style={{ flex: 1, fontSize: '11px', color: rec.cancelled ? '#c0b8b0' : '#3a3530', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace" }}>
-                            {rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '—'}
+                            Pago {rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '—'}
                             {rec.date ? ` · ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
                             {rec.cancelled ? ' (cancelado)' : ''}
                           </span>
