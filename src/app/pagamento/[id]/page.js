@@ -341,9 +341,7 @@ export default function PagamentoPage({ params }) {
         <span style={s.label}>Você está com vaga reservada para</span>
         {reservedDays.length === 0 ? (
           <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#9a9288', letterSpacing: '0.04em' }}>
-            {sumIn > 0
-              ? 'Você não está com vaga própria — o valor abaixo é referente ao pagamento de outra pessoa.'
-              : 'Nenhum dia confirmado encontrado.'}
+            Nenhum dia confirmado encontrado.
           </p>
         ) : (
           <div style={{ marginBottom: '1.5rem' }}>
@@ -366,21 +364,6 @@ export default function PagamentoPage({ params }) {
           <>
             <span style={s.label}>Valor</span>
             <p style={s.price}>US$ {Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            {sumIn > 0 && (
-              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#5d8a6a', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
-                Inclui US$ {sumIn.toFixed(2)} referente ao pagamento de {transfersIn.map(t => t.from_contact?.nickname || t.from_contact?.name).join(', ')}.
-              </p>
-            )}
-            {sumOut > 0 && (
-              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#b07a4a', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
-                Já descontado US$ {sumOut.toFixed(2)} transferido para {transfersOut.map(t => t.to_contact?.nickname || t.to_contact?.name).join(', ')}.
-              </p>
-            )}
-            {totalDiscount > 0 && (
-              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#8a7a58', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
-                Já inclui desconto de US$ {totalDiscount.toFixed(2)}.
-              </p>
-            )}
           </>
         )}
 
