@@ -1101,33 +1101,36 @@ export default function EventDetail({ params }) {
       discount: currentP.discount ?? null,
     } : null;
     const updateData = { payment_status: paymentStatus, payment_method: paymentMethod };
+    const statusChanged = paymentStatus !== (prevState?.status || 'em aberto');
 
     let logMsg = '';
     if (paymentStatus === 'pago') {
       const amount = paymentAmount !== '' && paymentAmount != null ? parseFloat(paymentAmount) : null;
       updateData.payment_records = [{ amount, date: paymentDate || null, cancelled: false }];
       updateData.installment_count = null;
-      logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
+      if (statusChanged) logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
     } else if (paymentStatus === 'parcelado') {
       updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
-      logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
+      if (statusChanged) logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
     } else if (paymentStatus === 'em aberto') {
       updateData.installment_count = null;
       updateData.payment_records = [];
-      logMsg = 'reverteu para Em Aberto';
+      if (statusChanged) logMsg = 'reverteu para Em Aberto';
     } else if (paymentStatus === 'a pagar no local') {
       updateData.installment_count = null;
       updateData.payment_records = [];
-      logMsg = 'registrou A Pagar no Local';
-    } else {
+      if (statusChanged) logMsg = 'registrou A Pagar no Local';
+    } else if (statusChanged) {
       logMsg = `alterou status para ${paymentStatus}`;
     }
 
     const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
     updateData.discount = discountVal;
     if (discountVal !== (prevState?.discount ?? null)) {
-      logMsg += discountVal != null ? ` · desconto de $${discountVal.toFixed(2)}` : ' · removeu desconto';
+      const discountMsg = discountVal != null ? `definiu desconto de $${discountVal.toFixed(2)}` : 'removeu desconto';
+      logMsg = logMsg ? `${logMsg} · ${discountMsg}` : discountMsg;
     }
+    if (!logMsg) logMsg = 'atualizou pagamento';
     updateData.payment_log = [...getParticipantLog(contactId), newLogEntry(logMsg, prevState)];
 
     const { error } = await supabase

@@ -111,6 +111,23 @@ function TransferLine({ t, direction, isLast, onSetStatus, onCancel, onOpenLog }
   );
 }
 
+function DiscountLine({ amount, isLast, onCancel }) {
+  const color = '#a08850';
+  const bg = '#fdf6ea';
+  const border = '#e8d8b0';
+  return (
+    <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+          ◐ desconto · $ {Number(amount).toFixed(2)}
+        </span>
+        <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Remover desconto"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
+      </div>
+    </div>
+  );
+}
+
 function LogFooter({ log, fmtLog, onOpenModal }) {
   const last = log[log.length - 1];
   return (
@@ -278,6 +295,24 @@ export default function PagamentosPage() {
     ));
   }
 
+  async function clearDiscountRow(contactId, eventId) {
+    const currentP = getParticipant(contactId, eventId);
+    if (!currentP || currentP.discount == null) return;
+    const prevState = { status: currentP.payment_status || 'em aberto', method: currentP.payment_method || null, records: currentP.payment_records || [], installment_count: currentP.installment_count || null, discount: currentP.discount ?? null };
+    const updateData = { discount: null, payment_log: [...getLog(contactId, eventId), newLogEntry('removeu desconto', prevState)] };
+    const { error } = await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    if (!error) updateLocal(contactId, eventId, updateData);
+  }
+
+  async function removeDiscount(p) {
+    if (!confirm('Remover desconto?')) return;
+    if (p._merged && p._secondary) {
+      await Promise.all([clearDiscountRow(p.contact_id, p.event_id), clearDiscountRow(p._secondary.contact_id, p._secondary.event_id)]);
+    } else {
+      await clearDiscountRow(p.contact_id, p.event_id);
+    }
+  }
+
   // ── Payment actions ───────────────────────────────────────────────────────
   async function updatePayment(contactId, eventId, paymentStatus, paymentMethod, options = {}) {
     const { installmentCount, discount, applyDiscount, paymentAmount, paymentDate } = options;
@@ -291,31 +326,34 @@ export default function PagamentosPage() {
     } : null;
 
     const updateData = { payment_status: paymentStatus, payment_method: paymentMethod };
+    const statusChanged = paymentStatus !== (prevState?.status || 'em aberto');
     let logMsg = '';
     if (paymentStatus === 'pago') {
       const amount = paymentAmount !== '' && paymentAmount != null ? parseFloat(paymentAmount) : null;
       updateData.payment_records = [{ amount, date: paymentDate || null, cancelled: false }];
       updateData.installment_count = null;
-      logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
+      if (statusChanged) logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
     } else if (paymentStatus === 'parcelado') {
       updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
-      logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
+      if (statusChanged) logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
     } else if (paymentStatus === 'em aberto') {
       updateData.installment_count = null;
       updateData.payment_records = [];
-      logMsg = 'reverteu para Em Aberto';
+      if (statusChanged) logMsg = 'reverteu para Em Aberto';
     } else if (paymentStatus === 'a pagar no local') {
       updateData.installment_count = null;
       updateData.payment_records = [];
-      logMsg = 'registrou A Pagar no Local';
-    } else {
+      if (statusChanged) logMsg = 'registrou A Pagar no Local';
+    } else if (statusChanged) {
       logMsg = `alterou status para ${paymentStatus}`;
     }
     const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
     updateData.discount = discountVal;
     if (discountVal !== (prevState?.discount ?? null)) {
-      logMsg += discountVal != null ? ` · desconto de $${discountVal.toFixed(2)}` : ' · removeu desconto';
+      const discountMsg = discountVal != null ? `definiu desconto de $${discountVal.toFixed(2)}` : 'removeu desconto';
+      logMsg = logMsg ? `${logMsg} · ${discountMsg}` : discountMsg;
     }
+    if (!logMsg) logMsg = 'atualizou pagamento';
     updateData.payment_log = [...getLog(contactId, eventId), newLogEntry(logMsg, prevState)];
 
     const { error } = await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
@@ -511,26 +549,29 @@ export default function PagamentosPage() {
       const actual = getParticipant(rowP.contact_id, rowP.event_id);
       const prevState = actual ? { status: actual.payment_status || 'em aberto', method: actual.payment_method || null, records: actual.payment_records || [], installment_count: actual.installment_count || null, discount: actual.discount ?? null } : null;
       const updateData = { payment_status: paymentStatus, payment_method: paymentMethod };
+      const statusChanged = paymentStatus !== (prevState?.status || 'em aberto');
       let logMsg = '';
       if (paymentStatus === 'pago') {
         updateData.payment_records = [{ amount, date: paymentDate || null, cancelled: false }];
         updateData.installment_count = null;
-        logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''} (pacote)`;
+        if (statusChanged) logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''} (pacote)`;
       } else if (paymentStatus === 'parcelado') {
         updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
-        logMsg = `definiu parcelamento em ${installmentCount || '?'}x (pacote)`;
+        if (statusChanged) logMsg = `definiu parcelamento em ${installmentCount || '?'}x (pacote)`;
       } else if (paymentStatus === 'em aberto') {
         updateData.installment_count = null; updateData.payment_records = [];
-        logMsg = 'reverteu para Em Aberto';
+        if (statusChanged) logMsg = 'reverteu para Em Aberto';
       } else if (paymentStatus === 'a pagar no local') {
         updateData.installment_count = null; updateData.payment_records = [];
-        logMsg = 'registrou A Pagar no Local';
-      } else { logMsg = `alterou status para ${paymentStatus}`; }
+        if (statusChanged) logMsg = 'registrou A Pagar no Local';
+      } else if (statusChanged) { logMsg = `alterou status para ${paymentStatus}`; }
       const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
       updateData.discount = discountVal;
       if (discountVal !== (prevState?.discount ?? null)) {
-        logMsg += discountVal != null ? ` · desconto de $${discountVal.toFixed(2)}` : ' · removeu desconto';
+        const discountMsg = discountVal != null ? `definiu desconto de $${discountVal.toFixed(2)}` : 'removeu desconto';
+        logMsg = logMsg ? `${logMsg} · ${discountMsg}` : discountMsg;
       }
+      if (!logMsg) logMsg = 'atualizou pagamento';
       updateData.payment_log = [...(actual?.payment_log || []), newLogEntry(logMsg, prevState)];
       await supabase.from('event_participants').update(updateData).match({ event_id: rowP.event_id, contact_id: rowP.contact_id });
       updateLocal(rowP.contact_id, rowP.event_id, updateData);
@@ -800,7 +841,7 @@ export default function PagamentosPage() {
                 const isActive = statusFilter.size === 0 || statusFilter.has(g.key);
                 const isSelected = statusFilter.has(g.key);
                 return (
-                  <button key={g.key} onClick={() => toggleStatusFilter(g.key)}
+                  <button key={g.key} onClick={() => toggleStatusFilter(g.key)} title={g.label}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 9px',
                       background: isSelected ? '#faf7f0' : 'transparent',
@@ -968,7 +1009,7 @@ export default function PagamentosPage() {
                   return (
                     <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '10px' }}>
                       <div onClick={openPaymentModal}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: (records.length > 0 && (isParcelado || isPago || isTransferido)) || (outTransfers.length + inTransfers.length > 0) ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: (records.length > 0 && (isParcelado || isPago || isTransferido)) || (outTransfers.length + inTransfers.length > 0) || p.discount > 0 ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530', flexShrink: 0 }}>{name}</span>
                           {p.payment_observation && (
@@ -994,9 +1035,6 @@ export default function PagamentosPage() {
                           {(isPago || isTransferido) && p.payment_method && (
                             <span style={{ fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em' }}>via {p.payment_method}</span>
                           )}
-                          {(isPago || isTransferido) && p.discount != null && (
-                            <span style={{ fontSize: '9px', color: '#8a7a58' }}>desc. $ {Number(p.discount).toFixed(2)}</span>
-                          )}
                         </div>
                       </div>
 
@@ -1021,14 +1059,24 @@ export default function PagamentosPage() {
                       ))}
 
                       {(() => {
-                        const allT = [...outTransfers.map(t => ({ ...t, _dir: 'out' })), ...inTransfers.map(t => ({ ...t, _dir: 'in' }))];
+                        const allT = [
+                          ...outTransfers.map(t => ({ ...t, _kind: 'transfer', _dir: 'out' })),
+                          ...inTransfers.map(t => ({ ...t, _kind: 'transfer', _dir: 'in' })),
+                          ...(p.discount > 0 ? [{ _kind: 'discount', id: 'discount', amount: p.discount }] : []),
+                        ];
                         const noMoreBlocksAfter = !(isParcelado || isNoLocal || (p.payment_log?.length > 0));
-                        return allT.map((t, i) => (
-                          <TransferLine key={t.id} t={t} direction={t._dir} isLast={noMoreBlocksAfter && i === allT.length - 1}
-                            onSetStatus={(s) => setTransferStatus(t.id, s)}
-                            onCancel={() => cancelTransfer(t.id)}
-                            onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
-                        ));
+                        return allT.map((t, i) => {
+                          const isLast = noMoreBlocksAfter && i === allT.length - 1;
+                          if (t._kind === 'discount') {
+                            return <DiscountLine key="discount" amount={t.amount} isLast={isLast} onCancel={() => removeDiscount(p)} />;
+                          }
+                          return (
+                            <TransferLine key={t.id} t={t} direction={t._dir} isLast={isLast}
+                              onSetStatus={(s) => setTransferStatus(t.id, s)}
+                              onCancel={() => cancelTransfer(t.id)}
+                              onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
+                          );
+                        });
                       })()}
 
                       {isParcelado && (
