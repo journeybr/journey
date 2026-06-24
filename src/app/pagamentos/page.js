@@ -35,8 +35,11 @@ const STATUS_GROUPS = [
   { key: 'conferir pagamento', label: 'Conferir Pagamento', icon: '?', color: '#c4892a' },
   { key: 'a pagar no local',   label: 'A pagar no local',   icon: '◐', color: '#8a7a58' },
   { key: 'parcelado',          label: 'Parcelado',          icon: '◑', color: '#7a68a4' },
+  { key: 'transferido',        label: 'Transferido',        icon: '⇄', color: '#5d8a9a' },
   { key: 'pago',               label: 'Pago',               icon: '◉', color: '#5d9470' },
 ];
+
+const sortByName = (a, b) => (a.contacts?.nickname || a.contacts?.name || '').localeCompare(b.contacts?.nickname || b.contacts?.name || '', 'pt-BR');
 
 // Cross-ceremony pricing: if contact has a day in another active ceremony within 29 days,
 // expected per ceremony = price_2d / 2 (instead of price_1d)
@@ -65,13 +68,14 @@ function computeExpected(p, allParticipants) {
   return (p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
 }
 
-function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel, onOpenLog }) {
+function TransferLine({ t, direction, isLast, onSetStatus, onCancel, onOpenLog }) {
   const out = direction === 'out';
   const otherName = out ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—');
   const color = out ? '#b07a4a' : '#5d8a6a';
   const bg = out ? '#fbf3ea' : '#eef6f0';
   const border = out ? '#e0c8a8' : '#bcdfc8';
-  const statusLabel = t.status === 'pago' ? 'pago' : t.status === 'conferir pagamento' ? 'conferir' : 'pendente';
+  const statusLabel = t.status === 'pago' ? 'pago' : t.status === 'a pagar no local' ? 'no local' : t.status === 'conferir pagamento' ? 'conferir' : 'pendente';
+  const resolved = t.status === 'pago' || t.status === 'a pagar no local';
   return (
     <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: t.observation ? '0.4rem 1rem 1px' : '0.4rem 1rem' }}>
@@ -84,12 +88,16 @@ function TransferLine({ t, direction, isLast, onMarkPaid, onRevert, onCancel, on
             histórico{t.log.length > 1 ? ` (${t.log.length})` : ''}
           </button>
         )}
-        {!out && (t.status !== 'pago' ? (
-          <button onClick={e => { e.stopPropagation(); onMarkPaid(); }} title="Marcar transferência como paga"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
-        ) : (
-          <button onClick={e => { e.stopPropagation(); onRevert(); }} title="Desfazer pagamento da transferência"
+        {!out && (resolved ? (
+          <button onClick={e => { e.stopPropagation(); onSetStatus('pendente'); }} title="Desfazer status da transferência"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '13px', padding: '0 2px', lineHeight: 1 }}>↺</button>
+        ) : (
+          <>
+            <button onClick={e => { e.stopPropagation(); onSetStatus('pago'); }} title="Marcar como pago"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
+            <button onClick={e => { e.stopPropagation(); onSetStatus('a pagar no local'); }} title="Marcar como a pagar no local"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a7a58', fontSize: '11px', padding: '0 2px' }}>⌂</button>
+          </>
         ))}
         <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancelar transferência"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
@@ -145,6 +153,7 @@ export default function PagamentosPage() {
   const [contactsList, setContactsList] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
+  const [statusFilter, setStatusFilter] = useState(new Set());
 
   // Filters
   const [personSearch, setPersonSearch] = useState('');
@@ -215,17 +224,11 @@ export default function PagamentosPage() {
     setTransferModal(null);
   }
 
-  async function markTransferPaid(transferId) {
+  async function setTransferStatus(transferId, status) {
     const t = transfers.find(x => x.id === transferId);
     const today = new Date().toISOString().split('T')[0];
-    const updateData = { status: 'pago', payment_date: today, log: [...(t?.log || []), newLogEntry('marcou transferência como paga')] };
-    await supabase.from('payment_transfers').update(updateData).eq('id', transferId);
-    setTransfers(prev => prev.map(x => x.id === transferId ? { ...x, ...updateData } : x));
-  }
-
-  async function revertTransferPaid(transferId) {
-    const t = transfers.find(x => x.id === transferId);
-    const updateData = { status: 'pendente', payment_date: null, log: [...(t?.log || []), newLogEntry('desfez pagamento da transferência')] };
+    const msgMap = { pago: 'marcou transferência como paga', 'a pagar no local': 'marcou transferência como a pagar no local', pendente: 'desfez status da transferência' };
+    const updateData = { status, payment_date: status === 'pago' ? today : null, log: [...(t?.log || []), newLogEntry(msgMap[status] || `alterou status da transferência para ${status}`)] };
     await supabase.from('payment_transfers').update(updateData).eq('id', transferId);
     setTransfers(prev => prev.map(x => x.id === transferId ? { ...x, ...updateData } : x));
   }
@@ -598,8 +601,10 @@ export default function PagamentosPage() {
     });
     return Object.values(groups).map(g => {
       const allPaid = g.transfersList.every(t => t.status === 'pago');
+      const anyNoLocal = g.transfersList.some(t => t.status === 'a pagar no local');
       const anyConferir = g.transfersList.some(t => t.status === 'conferir pagamento');
-      return { ...g, payment_status: allPaid ? 'pago' : anyConferir ? 'conferir pagamento' : 'em aberto' };
+      const status = allPaid ? 'pago' : anyNoLocal ? 'a pagar no local' : anyConferir ? 'conferir pagamento' : 'em aberto';
+      return { ...g, payment_status: status };
     });
   }, [transfers, participants]);
 
@@ -670,11 +675,48 @@ export default function PagamentosPage() {
 
   const allDisplayEntries = useMemo(() => [...displayParticipants, ...filteredOrphans], [displayParticipants, filteredOrphans]);
 
-  const totalPago      = allDisplayEntries.filter(p => p.payment_status === 'pago').length;
-  const totalParcelado = allDisplayEntries.filter(p => p.payment_status === 'parcelado').length;
-  const totalNoLocal   = allDisplayEntries.filter(p => p.payment_status === 'a pagar no local').length;
-  const totalConferir  = allDisplayEntries.filter(p => p.payment_status === 'conferir pagamento').length;
-  const totalAberto    = allDisplayEntries.filter(p => !p.payment_status || p.payment_status === 'em aberto').length;
+  // Pré-calcula transferências/saldo/status efetivo de cada linha, uma única vez, reaproveitado no
+  // bucket (grupo de status) e na renderização da linha — evita recalcular tudo duas vezes.
+  const entriesComputed = useMemo(() => {
+    return allDisplayEntries.map(p => {
+      if (p._isTransferOnly) return { ...p, _effectiveStatus: p.payment_status };
+      const records = p.payment_records || [];
+      const outTransfers = transfersOutMap[`${p.contact_id}-${p.event_id}`] || [];
+      const isPrimaryRow = primaryEventByContact[p.contact_id] === p.event_id;
+      const inTransfers = isPrimaryRow ? (transfersInMap[p.contact_id] || []) : [];
+      const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
+      const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
+      const baseExpected = p._merged ? p._expectedAmount : computeExpected(p, participants);
+      const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);
+      const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
+      const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar) : null;
+
+      // Saldo próprio resolvido (owed<=0): se ainda há transferência de saída pendente, mostra
+      // "transferido" em vez de "pago" — só conta como pago/no local quando o destinatário resolver.
+      let effectiveStatus = p.payment_status || 'em aberto';
+      if (owed != null && owed <= 0 && outTransfers.length > 0) {
+        if (outTransfers.every(t => t.status === 'pago')) effectiveStatus = 'pago';
+        else if (outTransfers.some(t => t.status === 'a pagar no local')) effectiveStatus = 'a pagar no local';
+        else effectiveStatus = 'transferido';
+      }
+
+      return { ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn, _adjExpected: expectedAmount, _owed: owed, _effectiveStatus: effectiveStatus };
+    });
+  }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants]);
+
+  const countsByStatus = useMemo(() => {
+    const c = {};
+    entriesComputed.forEach(p => { const k = p._effectiveStatus || p.payment_status || 'em aberto'; c[k] = (c[k] || 0) + 1; });
+    return c;
+  }, [entriesComputed]);
+
+  const toggleStatusFilter = (key) => {
+    setStatusFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   if (!user) return (
     <div style={{ textAlign: 'center', padding: '5rem', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#aaa49c', letterSpacing: '0.1em' }}>
@@ -745,12 +787,30 @@ export default function PagamentosPage() {
         <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '0.5px solid #d0cbc2' }}>
           <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>Pagamentos</h1>
           {!loading && (
-            <div style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.06em', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ color: '#5d9470' }}>◉ {totalPago}</span>·
-              <span style={{ color: '#7a68a4' }}>◑ {totalParcelado}</span>·
-              <span style={{ color: '#8a7a58' }}>◐ {totalNoLocal}</span>·
-              <span style={{ color: '#c4892a' }}>? {totalConferir}</span>·
-              <span>◎ {totalAberto}</span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+              {STATUS_GROUPS.map(g => {
+                const isActive = statusFilter.size === 0 || statusFilter.has(g.key);
+                const isSelected = statusFilter.has(g.key);
+                return (
+                  <button key={g.key} onClick={() => toggleStatusFilter(g.key)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 9px',
+                      background: isSelected ? '#faf7f0' : 'transparent',
+                      border: isSelected ? `0.5px solid ${g.color}` : '0.5px dashed #d0cbc2',
+                      borderRadius: '10px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace",
+                      fontSize: '10px', letterSpacing: '0.02em', color: isActive ? g.color : '#c0b8b0',
+                      opacity: isActive ? 1 : 0.55,
+                    }}>
+                    <span>{g.icon}</span>{countsByStatus[g.key] || 0}
+                  </button>
+                );
+              })}
+              {statusFilter.size > 0 && (
+                <button onClick={() => setStatusFilter(new Set())}
+                  style={{ padding: '3px 8px', background: 'none', border: '0.5px dashed #c8c2b8', borderRadius: '10px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em' }}>
+                  × limpar
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -762,12 +822,13 @@ export default function PagamentosPage() {
             {hasFilters ? 'nenhum resultado para os filtros selecionados.' : 'nenhum participante em cerimônias ativas.'}
           </div>
         ) : (
-          STATUS_GROUPS.map(({ key, label, icon, color }) => {
-            const group = allDisplayEntries.filter(p => (p.payment_status || 'em aberto') === key);
+          STATUS_GROUPS.filter(g => statusFilter.size === 0 || statusFilter.has(g.key)).map(({ key, label, icon, color }) => {
+            const group = entriesComputed.filter(p => (p._effectiveStatus || p.payment_status || 'em aberto') === key).sort(sortByName);
             const isConferir = key === 'conferir pagamento';
             const isNoLocal = key === 'a pagar no local';
             const isParcelado = key === 'parcelado';
             const isPago = key === 'pago';
+            const isTransferido = key === 'transferido';
 
             return (
               <div key={key} style={{ marginBottom: '2.4rem' }}>
@@ -792,8 +853,7 @@ export default function PagamentosPage() {
                         </div>
                         {list.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
-                            onMarkPaid={() => markTransferPaid(t.id)}
-                            onRevert={() => revertTransferPaid(t.id)}
+                            onSetStatus={(s) => setTransferStatus(t.id, s)}
                             onCancel={() => cancelTransfer(t.id)}
                             onOpenLog={() => setLogModal({ name: t.from_contact?.nickname || t.from_contact?.name || '—', log: t.log || [], isMerged: true })} />
                         ))}
@@ -803,15 +863,10 @@ export default function PagamentosPage() {
 
                   const name = p.contacts?.nickname || p.contacts?.name || '—';
                   const records = p.payment_records || [];
-                  const outTransfers = transfersOutMap[`${p.contact_id}-${p.event_id}`] || [];
-                  const isPrimaryRow = primaryEventByContact[p.contact_id] === p.event_id;
-                  const inTransfers = isPrimaryRow ? (transfersInMap[p.contact_id] || []) : [];
-                  const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
-                  const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
-                  const baseExpected = p._merged ? p._expectedAmount : computeExpected(p, participants);
-                  const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);
-                  const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
-                  const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar) : null;
+                  const outTransfers = p._outTransfers || [];
+                  const inTransfers = p._inTransfers || [];
+                  const expectedAmount = p._adjExpected;
+                  const owed = p._owed;
 
                   const openPaymentModal = () => setPaymentModal({
                     contactId: p.contact_id,
@@ -862,8 +917,7 @@ export default function PagamentosPage() {
                         )}
                         {[...outTransfers.map(t => ({ ...t, _dir: 'out' })), ...inTransfers.map(t => ({ ...t, _dir: 'in' }))].map(t => (
                           <TransferLine key={t.id} t={t} direction={t._dir} isLast={false}
-                            onMarkPaid={() => markTransferPaid(t.id)}
-                            onRevert={() => revertTransferPaid(t.id)}
+                            onSetStatus={(s) => setTransferStatus(t.id, s)}
                             onCancel={() => cancelTransfer(t.id)}
                             onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
                         ))}
@@ -906,7 +960,7 @@ export default function PagamentosPage() {
                   return (
                     <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '10px' }}>
                       <div onClick={openPaymentModal}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: (records.length > 0 && (isParcelado || isPago)) || (outTransfers.length + inTransfers.length > 0) ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: (records.length > 0 && (isParcelado || isPago || isTransferido)) || (outTransfers.length + inTransfers.length > 0) ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530', flexShrink: 0 }}>{name}</span>
                           {p.payment_observation && (
@@ -923,22 +977,22 @@ export default function PagamentosPage() {
                           </button>
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px' }}>
-                          {!isPago && owed != null && (
+                          {!isPago && !isTransferido && owed != null && (
                             <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {Number(owed).toFixed(2)}</span>
                           )}
                           {isParcelado && p.installment_count > 0 && (
                             <span style={{ fontSize: '9px', color: '#7a68a4', letterSpacing: '0.04em' }}>{records.filter(r => !r.cancelled).length}/{p.installment_count} parcelas</span>
                           )}
-                          {isPago && p.payment_method && (
+                          {(isPago || isTransferido) && p.payment_method && (
                             <span style={{ fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em' }}>via {p.payment_method}</span>
                           )}
-                          {isPago && p.discount != null && (
+                          {(isPago || isTransferido) && p.discount != null && (
                             <span style={{ fontSize: '9px', color: '#8a7a58' }}>desc. $ {Number(p.discount).toFixed(2)}</span>
                           )}
                         </div>
                       </div>
 
-                      {(isParcelado || isPago) && records.map((rec, i) => (
+                      {(isParcelado || isPago || isTransferido) && records.map((rec, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#f5f0f8', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
                           <span style={{ flex: 1, fontSize: '11px', color: rec.cancelled ? '#c0b8b0' : '#3a3530', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace" }}>
                             Pago {rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '—'}
@@ -963,8 +1017,7 @@ export default function PagamentosPage() {
                         const noMoreBlocksAfter = !(isParcelado || isNoLocal || (p.payment_log?.length > 0));
                         return allT.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction={t._dir} isLast={noMoreBlocksAfter && i === allT.length - 1}
-                            onMarkPaid={() => markTransferPaid(t.id)}
-                            onRevert={() => revertTransferPaid(t.id)}
+                            onSetStatus={(s) => setTransferStatus(t.id, s)}
                             onCancel={() => cancelTransfer(t.id)}
                             onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
                         ));
