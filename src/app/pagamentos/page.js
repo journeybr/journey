@@ -562,18 +562,27 @@ export default function PagamentosPage() {
     return m;
   }, [transfers]);
 
+  // Quem recebe não precisa estar na mesma cerimônia de quem transferiu — agrupa por pessoa, não por evento.
   const transfersInMap = useMemo(() => {
     const m = {};
-    transfers.forEach(t => { const k = `${t.to_contact_id}-${t.event_id}`; (m[k] = m[k] || []).push(t); });
+    transfers.forEach(t => { const k = t.to_contact_id; (m[k] = m[k] || []).push(t); });
     return m;
   }, [transfers]);
 
-  // Transferências cujo responsável não é participante daquele evento — entram como linha própria,
+  // Linha "âncora" de cada contato: a primeira cerimônia em que ele aparece como participante.
+  // É nela que penduramos as transferências recebidas, para não duplicar a pessoa em vários cards.
+  const primaryEventByContact = useMemo(() => {
+    const m = {};
+    participants.forEach(p => { if (!(p.contact_id in m)) m[p.contact_id] = p.event_id; });
+    return m;
+  }, [participants]);
+
+  // Transferências cujo responsável não participa de NENHUM evento ativo — entram como linha própria,
   // agrupadas só por pessoa (independente da cerimônia de cada transferência).
   const orphanTransferEntries = useMemo(() => {
     const groups = {};
     transfers.forEach(t => {
-      const isOrphan = !participants.some(p => p.contact_id === t.to_contact_id && p.event_id === t.event_id);
+      const isOrphan = !participants.some(p => p.contact_id === t.to_contact_id);
       if (!isOrphan) return;
       const key = t.to_contact_id;
       if (!groups[key]) {
@@ -794,9 +803,9 @@ export default function PagamentosPage() {
 
                   const name = p.contacts?.nickname || p.contacts?.name || '—';
                   const records = p.payment_records || [];
-                  const transferKey = `${p.contact_id}-${p.event_id}`;
-                  const outTransfers = transfersOutMap[transferKey] || [];
-                  const inTransfers = transfersInMap[transferKey] || [];
+                  const outTransfers = transfersOutMap[`${p.contact_id}-${p.event_id}`] || [];
+                  const isPrimaryRow = primaryEventByContact[p.contact_id] === p.event_id;
+                  const inTransfers = isPrimaryRow ? (transfersInMap[p.contact_id] || []) : [];
                   const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
                   const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
                   const baseExpected = p._merged ? p._expectedAmount : computeExpected(p, participants);
