@@ -2,46 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { computeBasePriceForContact } from '@/lib/paymentCalc';
 
 const fonts = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&family=IM+Fell+English:ital@0;1&family=Courier+Prime&display=swap');
 `;
-
-// Replica exatamente o pareamento/merge de cerimônias (dentro de 29 dias) usado na tela de
-// Pagamentos — soma o preço de pacote (price_2d) por par, em vez de dividir/decidir por linha.
-// É o valor que o admin confere antes de mandar o link, então tem que bater com o que ele vê lá.
-function computeBasePrice(allParticipants) {
-  const merged = new Set();
-  let total = 0;
-  let any = false;
-  for (const p of allParticipants) {
-    if (merged.has(p.event_id)) continue;
-    if (!p.date1_confirmed && !p.date2_confirmed) continue;
-    any = true;
-    const partner = allParticipants.find(x => {
-      if (x.event_id === p.event_id || merged.has(x.event_id)) return false;
-      const td = [];
-      if (p.date1_confirmed && p.events?.date) td.push(p.events.date);
-      if (p.date2_confirmed && p.events?.date2) td.push(p.events.date2);
-      const od = [];
-      if (x.date1_confirmed && x.events?.date) od.push(x.events.date);
-      if (x.date2_confirmed && x.events?.date2) od.push(x.events.date2);
-      for (const d1 of td) for (const d2 of od)
-        if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) return true;
-      return false;
-    });
-    if (partner) {
-      merged.add(p.event_id);
-      merged.add(partner.event_id);
-      const price2d = p.events?.price_2d ?? partner.events?.price_2d ?? null;
-      if (price2d != null) total += price2d;
-    } else {
-      const price = (p.date1_confirmed && p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
-      if (price != null) total += price;
-    }
-  }
-  return any ? total : null;
-}
 
 const s = {
   page: {
@@ -260,7 +225,7 @@ export default function PagamentoPage({ params }) {
     return days;
   });
 
-  const basePrice = computeBasePrice(participants);
+  const basePrice = computeBasePriceForContact(participants);
 
   const sumOut = transfersOut.reduce((s, t) => s + Number(t.amount), 0);
   const sumIn = transfersIn.reduce((s, t) => s + Number(t.amount), 0);

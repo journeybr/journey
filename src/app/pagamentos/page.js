@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
+import { computeExpected, findPairPartner, soloExpected } from '@/lib/paymentCalc';
 import { useRouter } from 'next/navigation';
 
 const PersonIcon = () => (
@@ -41,32 +42,6 @@ const STATUS_GROUPS = [
 
 const sortByName = (a, b) => (a.contacts?.nickname || a.contacts?.name || '').localeCompare(b.contacts?.nickname || b.contacts?.name || '', 'pt-BR');
 
-// Cross-ceremony pricing: if contact has a day in another active ceremony within 29 days,
-// expected per ceremony = price_2d / 2 (instead of price_1d)
-function computeExpected(p, allParticipants) {
-  if (!p.date1_confirmed && !p.date2_confirmed) return null;
-  const otherParts = allParticipants.filter(x =>
-    x.contact_id === p.contact_id &&
-    x.event_id !== p.event_id &&
-    x.events?.active !== false
-  );
-  const thisDays = [];
-  if (p.date1_confirmed && p.events?.date) thisDays.push(p.events.date);
-  if (p.date2_confirmed && p.events?.date2) thisDays.push(p.events.date2);
-  for (const op of otherParts) {
-    const otherDays = [];
-    if (op.date1_confirmed && op.events?.date) otherDays.push(op.events.date);
-    if (op.date2_confirmed && op.events?.date2) otherDays.push(op.events.date2);
-    for (const d1 of thisDays) {
-      for (const d2 of otherDays) {
-        if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) {
-          return p.events?.price_2d != null ? p.events.price_2d / 2 : (p.events?.price_1d ?? null);
-        }
-      }
-    }
-  }
-  return (p.date1_confirmed && p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
-}
 
 function TransferLine({ t, direction, isLast, onSetStatus, onCancel, onOpenLog }) {
   const out = direction === 'out';
@@ -128,6 +103,35 @@ function DiscountLine({ amount, isLast, onCancel }) {
   );
 }
 
+function ResumoMetric({ label, count, total, groups, expandKey, expanded, onToggle, showAmountPer = null, color = '#3a3530' }) {
+  const isOpen = expanded.has(expandKey);
+  const hasGroups = groups.length > 0;
+  return (
+    <div style={{ marginBottom: '0.4rem' }}>
+      <div onClick={() => hasGroups && onToggle(expandKey)}
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.45rem 0', cursor: hasGroups ? 'pointer' : 'default', borderBottom: '0.5px dashed #e8e2d6' }}>
+        <span style={{ fontSize: '11px', color, letterSpacing: '0.02em' }}>
+          {hasGroups && (
+            <span style={{ display: 'inline-block', marginRight: '6px', fontSize: '9px', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.15s' }}>▾</span>
+          )}
+          {label} <span style={{ color: '#aaa49c' }}>({count})</span>
+        </span>
+        <span style={{ fontSize: '12px', color, fontFamily: "'Courier Prime', monospace" }}>$ {Number(total).toFixed(2)}</span>
+      </div>
+      {isOpen && hasGroups && (
+        <div style={{ padding: '4px 0 6px 1.4rem', borderLeft: '0.5px dashed #d0cbc2', marginLeft: '4px' }}>
+          {groups.map((g, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#7a7268', padding: '2px 0' }}>
+              <span>{g.name}</span>
+              {showAmountPer && <span style={{ fontFamily: "'Courier Prime', monospace" }}>$ {Number(g[showAmountPer] || 0).toFixed(2)}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LogFooter({ log, fmtLog, onOpenModal }) {
   const last = log[log.length - 1];
   return (
@@ -171,6 +175,9 @@ export default function PagamentosPage() {
   const [transfers, setTransfers] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
   const [statusFilter, setStatusFilter] = useState(new Set());
+  const [resumoModal, setResumoModal] = useState(false);
+  const [resumoCeremonies, setResumoCeremonies] = useState(new Set());
+  const [resumoExpanded, setResumoExpanded] = useState(new Set());
 
   // Filters
   const [personSearch, setPersonSearch] = useState('');
@@ -629,6 +636,92 @@ export default function PagamentosPage() {
     return m;
   }, [participants]);
 
+  // ── Resumo de pagamentos ─────────────────────────────────────────────────
+  // Agrupa por PESSOA (não por linha) — um par pareado em 29 dias conta como UM grupo de 2 dias,
+  // mesmo que só uma das duas cerimônias do par esteja selecionada no resumo.
+  const resumoGroups = useMemo(() => {
+    if (resumoCeremonies.size === 0) return [];
+    const handled = new Set();
+    const groups = [];
+    for (const p of participants) {
+      const k = `${p.event_id}-${p.contact_id}`;
+      if (handled.has(k)) continue;
+      if (!p.date1_confirmed && !p.date2_confirmed) continue;
+      const sameContactRows = participants.filter(x => x.contact_id === p.contact_id && !handled.has(`${x.event_id}-${x.contact_id}`));
+      const partner = findPairPartner(p, sameContactRows);
+      const inScope = resumoCeremonies.has(p.event_id);
+      let rows, kind, price;
+      if (partner) {
+        handled.add(k);
+        handled.add(`${partner.event_id}-${partner.contact_id}`);
+        const partnerInScope = resumoCeremonies.has(partner.event_id);
+        if (!inScope && !partnerInScope) continue;
+        rows = [p, partner];
+        kind = '2d';
+        price = p.events?.price_2d ?? partner.events?.price_2d ?? null;
+      } else {
+        handled.add(k);
+        if (!inScope) continue;
+        rows = [p];
+        kind = (p.date1_confirmed && p.date2_confirmed) ? '2d' : '1d';
+        price = soloExpected(p);
+      }
+      const anchor = rows[0];
+      const name = anchor.contacts?.nickname || anchor.contacts?.name || '—';
+      const discount = anchor.discount || 0;
+      const records = rows.flatMap(r => r.payment_records || []);
+      const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
+      const outTransfers = rows.flatMap(r => transfersOutMap[`${r.contact_id}-${r.event_id}`] || []);
+      const isPrimaryRow = primaryEventByContact[anchor.contact_id] === anchor.event_id;
+      const inTransfers = isPrimaryRow ? (transfersInMap[anchor.contact_id] || []) : [];
+      const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
+      const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
+      const expectedAmount = price != null ? price - sumOut + sumIn : (sumIn > 0 ? sumIn : price);
+      const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - discount) : null;
+      let effectiveStatus = anchor.payment_status || 'em aberto';
+      if (owed != null && owed <= 0 && outTransfers.length > 0) {
+        if (outTransfers.every(t => t.status === 'pago')) effectiveStatus = 'pago';
+        else if (outTransfers.some(t => t.status === 'a pagar no local')) effectiveStatus = 'a pagar no local';
+        else effectiveStatus = 'transferido';
+      }
+      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, owed, effectiveStatus });
+    }
+    return groups;
+  }, [participants, resumoCeremonies, transfersOutMap, transfersInMap, primaryEventByContact]);
+
+  const resumoSummary = useMemo(() => {
+    const twoDay = resumoGroups.filter(g => g.kind === '2d');
+    const oneDay = resumoGroups.filter(g => g.kind === '1d');
+    const discounted = resumoGroups.filter(g => g.discount > 0);
+    const sumPrice = arr => arr.reduce((s, g) => s + (g.price || 0), 0);
+    const totalDiscount = discounted.reduce((s, g) => s + g.discount, 0);
+    const totalReceber = sumPrice(resumoGroups) - totalDiscount;
+    const aPagarGroups = resumoGroups.filter(g => g.effectiveStatus !== 'pago' && g.effectiveStatus !== 'a pagar no local');
+    const noLocalGroups = resumoGroups.filter(g => g.effectiveStatus === 'a pagar no local');
+    const pagoGroups = resumoGroups.filter(g => g.paidSoFar > 0);
+    return {
+      twoDay: { groups: twoDay, price: twoDay[0]?.price ?? null, total: sumPrice(twoDay) },
+      oneDay: { groups: oneDay, price: oneDay[0]?.price ?? null, total: sumPrice(oneDay) },
+      discounted: { groups: discounted, total: totalDiscount },
+      totalReceber,
+      aPagar: { groups: aPagarGroups, total: aPagarGroups.reduce((s, g) => s + (g.owed || 0), 0) },
+      noLocal: { groups: noLocalGroups, total: noLocalGroups.reduce((s, g) => s + (g.owed || 0), 0) },
+      pago: { groups: pagoGroups, total: pagoGroups.reduce((s, g) => s + (g.paidSoFar || 0), 0) },
+    };
+  }, [resumoGroups]);
+
+  const toggleResumoExpanded = (k) => setResumoExpanded(prev => {
+    const next = new Set(prev);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    return next;
+  });
+
+  const toggleResumoCeremony = (id) => setResumoCeremonies(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
   // Transferências cujo responsável não participa de NENHUM evento ativo — entram como linha própria,
   // agrupadas só por pessoa (independente da cerimônia de cada transferência).
   const orphanTransferEntries = useMemo(() => {
@@ -705,18 +798,7 @@ export default function PagamentosPage() {
     for (const p of filtered) {
       const key = `${p.event_id}-${p.contact_id}`;
       if (merged.has(key)) continue;
-      const partner = filtered.find(x => {
-        if (x.contact_id !== p.contact_id || x.event_id === p.event_id) return false;
-        const td = [];
-        if (p.date1_confirmed && p.events?.date) td.push(p.events.date);
-        if (p.date2_confirmed && p.events?.date2) td.push(p.events.date2);
-        const od = [];
-        if (x.date1_confirmed && x.events?.date) od.push(x.events.date);
-        if (x.date2_confirmed && x.events?.date2) od.push(x.events.date2);
-        for (const d1 of td) for (const d2 of od)
-          if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) return true;
-        return false;
-      });
+      const partner = findPairPartner(p, filtered);
       if (partner) {
         merged.add(key);
         merged.add(`${partner.event_id}-${partner.contact_id}`);
@@ -852,7 +934,13 @@ export default function PagamentosPage() {
       <div style={s.content}>
         {/* Header */}
         <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '0.5px solid #d0cbc2' }}>
-          <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>Pagamentos</h1>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+            <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>Pagamentos</h1>
+            <button onClick={() => setResumoModal(true)}
+              style={{ padding: '5px 12px', background: 'transparent', border: '0.5px solid #b8b0a4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>
+              ▤ resumo
+            </button>
+          </div>
           {!loading && (
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
               {STATUS_GROUPS.map(g => {
@@ -1289,6 +1377,69 @@ export default function PagamentosPage() {
       })()}
 
       {/* OBS modal */}
+      {/* Resumo modal */}
+      {resumoModal && (
+        <div onClick={() => setResumoModal(false)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+            <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '22px', color: '#3a3530' }}>Resumo de pagamentos</div>
+              <button onClick={() => setResumoModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#9a9288', lineHeight: 1 }}>×</button>
+            </div>
+
+            <div style={{ padding: '1rem 1.5rem 0' }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Cerimônias</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {allCeremonies.map(c => {
+                  const isSelected = resumoCeremonies.has(c.id);
+                  return (
+                    <button key={c.id} onClick={() => toggleResumoCeremony(c.id)}
+                      style={{ padding: '4px 10px', background: isSelected ? '#3a3530' : 'transparent', border: isSelected ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: isSelected ? '#f7f4ee' : '#7a7268' }}>
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ padding: '1.2rem 1.5rem 1.5rem' }}>
+              {resumoCeremonies.size === 0 ? (
+                <div style={{ fontSize: '11px', color: '#aaa49c', fontStyle: 'italic', padding: '1rem 0', textAlign: 'center' }}>selecione uma ou mais cerimônias acima.</div>
+              ) : (
+                <>
+                  <ResumoMetric label={`Pessoas de 2 dias${resumoSummary.twoDay.price != null ? ` × $${Number(resumoSummary.twoDay.price).toFixed(2)}` : ''}`}
+                    count={resumoSummary.twoDay.groups.length} total={resumoSummary.twoDay.total} groups={resumoSummary.twoDay.groups}
+                    expandKey="2d" expanded={resumoExpanded} onToggle={toggleResumoExpanded} />
+                  <ResumoMetric label={`Pessoas de 1 dia${resumoSummary.oneDay.price != null ? ` × $${Number(resumoSummary.oneDay.price).toFixed(2)}` : ''}`}
+                    count={resumoSummary.oneDay.groups.length} total={resumoSummary.oneDay.total} groups={resumoSummary.oneDay.groups}
+                    expandKey="1d" expanded={resumoExpanded} onToggle={toggleResumoExpanded} />
+                  <ResumoMetric label="Descontos concedidos" showAmountPer="discount"
+                    count={resumoSummary.discounted.groups.length} total={resumoSummary.discounted.total} groups={resumoSummary.discounted.groups}
+                    expandKey="desc" expanded={resumoExpanded} onToggle={toggleResumoExpanded} color="#8a7a58" />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0.7rem 0', marginTop: '0.4rem', borderTop: '0.5px solid #3a3530' }}>
+                    <span style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3a3530', fontWeight: 'bold' }}>Total a receber</span>
+                    <span style={{ fontSize: '15px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontWeight: 'bold' }}>$ {resumoSummary.totalReceber.toFixed(2)}</span>
+                  </div>
+
+                  <div style={{ borderTop: '0.5px dashed #d0cbc2', margin: '1.1rem 0' }} />
+
+                  <ResumoMetric label="Total a pagar" showAmountPer="owed" color="#b0a898"
+                    count={resumoSummary.aPagar.groups.length} total={resumoSummary.aPagar.total} groups={resumoSummary.aPagar.groups}
+                    expandKey="apagar" expanded={resumoExpanded} onToggle={toggleResumoExpanded} />
+                  <ResumoMetric label="Total a receber no local" showAmountPer="owed" color="#8a7a58"
+                    count={resumoSummary.noLocal.groups.length} total={resumoSummary.noLocal.total} groups={resumoSummary.noLocal.groups}
+                    expandKey="local" expanded={resumoExpanded} onToggle={toggleResumoExpanded} />
+                  <ResumoMetric label="Total pago" showAmountPer="paidSoFar" color="#5d9470"
+                    count={resumoSummary.pago.groups.length} total={resumoSummary.pago.total} groups={resumoSummary.pago.groups}
+                    expandKey="pago" expanded={resumoExpanded} onToggle={toggleResumoExpanded} />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {obsModal && (
         <div onClick={() => setObsModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '340px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', padding: '1.5rem', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
