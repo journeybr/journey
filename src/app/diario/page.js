@@ -108,7 +108,7 @@ export default function DiarioPage() {
         const ceremony = t.events?.name || '—';
         const eventId = t.events?.id;
         (t.log || []).forEach(e =>
-          entries.push({ ...e, _name: `${fromName} → ${toName}`, _ceremony: ceremony, _eventId: eventId, _type: 'transferência' })
+          entries.push({ ...e, _name: `${fromName} → ${toName}`, _ceremony: ceremony, _eventId: eventId, _type: 'pagamento' })
         );
       });
 
@@ -248,10 +248,9 @@ export default function DiarioPage() {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '4px' }}>
           {[
-            { key: 'inscrição',     label: 'Inscrição',     color: '#5d9470', bg: '#eef5f0' },
-            { key: 'pagamento',     label: 'Pagamento',     color: '#7a68a4', bg: '#f0eef8' },
-            { key: 'transferência', label: 'Transferência', color: '#5d8a9a', bg: '#eaf3f5' },
-            { key: 'ficha',         label: 'Ficha',         color: '#b87a1a', bg: '#fdf3e3' },
+            { key: 'inscrição', label: 'Inscrição', color: '#5d9470', bg: '#eef5f0' },
+            { key: 'pagamento', label: 'Pagamento', color: '#7a68a4', bg: '#f0eef8' },
+            { key: 'ficha',     label: 'Ficha',     color: '#b87a1a', bg: '#fdf3e3' },
           ].map(t => (
             <button
               key={t.key}
@@ -285,7 +284,7 @@ export default function DiarioPage() {
               hour: '2-digit', minute: '2-digit',
               timeZone: 'America/Sao_Paulo',
             });
-            const typeColors = { pagamento: { fg: '#7a68a4', bg: '#f0eef8' }, 'transferência': { fg: '#5d8a9a', bg: '#eaf3f5' }, ficha: { fg: '#b87a1a', bg: '#fdf3e3' } };
+            const typeColors = { pagamento: { fg: '#7a68a4', bg: '#f0eef8' }, ficha: { fg: '#b87a1a', bg: '#fdf3e3' } };
             const tc = typeColors[entry._type] || { fg: '#5d9470', bg: '#eef5f0' };
             return (
               <div
