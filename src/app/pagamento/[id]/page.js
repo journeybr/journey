@@ -241,7 +241,12 @@ export default function PagamentoPage({ params }) {
     const active = (partsData || []).filter(p => p.events && p.events.active !== false);
     setParticipants(active);
     const activeTransfers = (transfersData || []).filter(t => t.events?.active !== false);
-    setTransfersOut(activeTransfers.filter(t => t.from_contact_id === contactId));
+    // Transferência de SAÍDA só conta se ainda estiver vinculada a uma cerimônia em que esta
+    // pessoa é participante ativo — mesma regra de transfersOutMap em pagamentos/page.js (chave
+    // contact_id+event_id). Transferência de ENTRADA não tem essa restrição: quem recebe não
+    // precisa estar na mesma cerimônia de quem transferiu.
+    const activeEventIds = new Set(active.map(p => p.event_id));
+    setTransfersOut(activeTransfers.filter(t => t.from_contact_id === contactId && activeEventIds.has(t.event_id)));
     setTransfersIn(activeTransfers.filter(t => t.to_contact_id === contactId));
     setLoading(false);
   }
@@ -396,16 +401,6 @@ export default function PagamentoPage({ params }) {
             <span style={s.label}>Valor</span>
             <p style={s.price}>US$ {Number(price).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           </>
-        )}
-
-        {/* Debug temporário — acrescente ?debug=1 na URL pra ver os números intermediários. */}
-        {typeof window !== 'undefined' && window.location.search.includes('debug') && (
-          <pre style={{ fontSize: '10px', background: '#fdf6ea', border: '0.5px dashed #e8d8b0', padding: '0.6rem', whiteSpace: 'pre-wrap', marginTop: '1rem' }}>
-{JSON.stringify({
-  participants: participants.map(p => ({ event: p.events?.name, event_id: p.event_id, date1_confirmed: p.date1_confirmed, date2_confirmed: p.date2_confirmed, price_1d: p.events?.price_1d, price_2d: p.events?.price_2d, discount: p.discount })),
-  basePrice, sumOut, sumIn, totalDiscount, price,
-}, null, 2)}
-          </pre>
         )}
 
         <p style={s.note}>
