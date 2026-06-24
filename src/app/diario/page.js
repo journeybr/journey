@@ -73,13 +73,16 @@ export default function DiarioPage() {
 
   async function fetchData() {
     setLoading(true);
-    const [{ data }, { data: transfersData }] = await Promise.all([
+    const [{ data }, { data: transfersData }, { data: contactsData }] = await Promise.all([
       supabase
         .from('event_participants')
         .select('enrollment_log, payment_log, contacts(id, name, nickname), events!inner(id, name, date, active)'),
       supabase
         .from('payment_transfers')
         .select('log, from_contact:contacts!from_contact_id(name,nickname), to_contact:contacts!to_contact_id(name,nickname), events!inner(id, name, active)'),
+      supabase
+        .from('contacts')
+        .select('name, nickname, activity_log'),
     ]);
 
     const entries = [];
@@ -108,6 +111,15 @@ export default function DiarioPage() {
           entries.push({ ...e, _name: `${fromName} → ${toName}`, _ceremony: ceremony, _eventId: eventId, _type: 'transferência' })
         );
       });
+
+    // Entradas sem cerimônia viva (ex: remoção de participante) trazem seu próprio
+    // eventId/eventName embutidos, já que a linha de origem foi excluída.
+    (contactsData || []).forEach(c => {
+      const name = c.nickname || c.name || '—';
+      (c.activity_log || []).forEach(e =>
+        entries.push({ ...e, _name: name, _ceremony: e.eventName || '—', _eventId: e.eventId, _type: e.type || 'inscrição' })
+      );
+    });
 
     entries.sort((a, b) => new Date(b.at) - new Date(a.at));
     setAllEntries(entries);

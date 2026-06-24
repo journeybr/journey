@@ -888,12 +888,21 @@ export default function EventDetail({ params }) {
 
   async function removeParticipant(contactId) {
     if (!confirm('Remover esta pessoa da cerimônia?')) return;
-    
+
+    // A linha de event_participants será excluída, então o log de remoção
+    // precisa viver em contacts.activity_log (com eventId/eventName embutidos,
+    // já que não haverá mais relação para fazer o join no Diário).
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const entry = newLogEntry(`removeu ${firstName} da cerimônia "${event?.name || '—'}"`, null, { eventId, eventName: event?.name || '—' });
+    const { data: contactRow } = await supabase.from('contacts').select('activity_log').eq('id', contactId).single();
+    await supabase.from('contacts').update({ activity_log: [...(contactRow?.activity_log || []), entry] }).eq('id', contactId);
+
     const { error } = await supabase
       .from('event_participants')
       .delete()
       .match({ event_id: eventId, contact_id: contactId });
-      
+
     if (!error) {
       fetchEventData();
     }
@@ -959,14 +968,18 @@ export default function EventDetail({ params }) {
   }
 
   async function updateRemedioStatus(contactId, newStatus) {
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const labelMap = { 'Ok Manual': 'OK (manual)', 'Acompanhar': 'Acompanhar', 'enviar': 'Pendente', 'enviado': 'Enviada' };
+    const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`marcou ficha de triagem de ${firstName} como ${labelMap[newStatus] || newStatus}`, null, { type: 'ficha' })];
     const { error } = await supabase
       .from('event_participants')
-      .update({ remedio_status: newStatus })
+      .update({ remedio_status: newStatus, enrollment_log: newEnrollmentLog })
       .match({ event_id: eventId, contact_id: contactId });
-      
+
     if (!error) {
-      setParticipants(prev => prev.map(p => 
-        p.contact_id === contactId ? { ...p, remedio_status: newStatus } : p
+      setParticipants(prev => prev.map(p =>
+        p.contact_id === contactId ? { ...p, remedio_status: newStatus, enrollment_log: newEnrollmentLog } : p
       ));
     }
   }
@@ -993,9 +1006,12 @@ export default function EventDetail({ params }) {
     }
 
     // 2. Reseta o status do remédio na tabela 'event_participants'
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`excluiu permanentemente a ficha de triagem de ${firstName}`, null, { type: 'ficha' })];
     const { error: participantsError } = await supabase
       .from('event_participants')
-      .update({ remedio_status: 'enviar' })
+      .update({ remedio_status: 'enviar', enrollment_log: newEnrollmentLog })
       .match({ event_id: eventId, contact_id: contactId });
 
     if (participantsError) {
@@ -1009,6 +1025,7 @@ export default function EventDetail({ params }) {
         return {
           ...p,
           remedio_status: 'enviar',
+          enrollment_log: newEnrollmentLog,
           contacts: {
             ...p.contacts,
             medical_form_step: null,
@@ -1023,20 +1040,27 @@ export default function EventDetail({ params }) {
   }
 
   async function toggleCheck(contactId, field, currentValue) {
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const fieldLabels = { preparacao_enviada: 'Etapa Inicial da Cerimônia', endereco_enviado: 'Endereço' };
+    const label = fieldLabels[field] || field;
+    const action = !currentValue ? 'marcou envio de' : 'desmarcou envio de';
+    const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`${action} "${label}" para ${firstName}`)];
     const { error } = await supabase
       .from('event_participants')
-      .update({ [field]: !currentValue })
+      .update({ [field]: !currentValue, enrollment_log: newEnrollmentLog })
       .match({ event_id: eventId, contact_id: contactId });
     if (!error) {
       setParticipants(prev => prev.map(p =>
-        p.contact_id === contactId ? { ...p, [field]: !currentValue } : p
+        p.contact_id === contactId ? { ...p, [field]: !currentValue, enrollment_log: newEnrollmentLog } : p
       ));
     }
   }
 
-  function newLogEntry(msg, prevState = null) {
+  function newLogEntry(msg, prevState = null, extra = null) {
     const entry = { at: new Date().toISOString(), by: adminNameRef.current, msg };
     if (prevState) entry.prev = prevState;
+    if (extra) Object.assign(entry, extra);
     return entry;
   }
 
