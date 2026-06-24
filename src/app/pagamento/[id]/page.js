@@ -7,30 +7,40 @@ const fonts = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&family=IM+Fell+English:ital@0;1&family=Courier+Prime&display=swap');
 `;
 
-// Valor esperado de UMA linha (uma cerimônia), considerando o pareamento entre cerimônias
-// dentro de 29 dias (mesma cerimônia "pacote" em duas datas separadas vira meio preço_2d cada).
-// Somar isso entre todas as linhas ativas do contato — em vez de somar os dias confirmados de
-// todas as cerimônias como se fossem uma única — evita cobrar 2 dias de quem só vai 1 dia em
-// cada uma de duas cerimônias não relacionadas.
-function computeExpected(p, allParticipants) {
-  if (!p.date1_confirmed && !p.date2_confirmed) return null;
-  const otherParts = allParticipants.filter(x => x.event_id !== p.event_id);
-  const thisDays = [];
-  if (p.date1_confirmed && p.events?.date) thisDays.push(p.events.date);
-  if (p.date2_confirmed && p.events?.date2) thisDays.push(p.events.date2);
-  for (const op of otherParts) {
-    const otherDays = [];
-    if (op.date1_confirmed && op.events?.date) otherDays.push(op.events.date);
-    if (op.date2_confirmed && op.events?.date2) otherDays.push(op.events.date2);
-    for (const d1 of thisDays) {
-      for (const d2 of otherDays) {
-        if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) {
-          return p.events?.price_2d != null ? p.events.price_2d / 2 : (p.events?.price_1d ?? null);
-        }
-      }
+// Replica exatamente o pareamento/merge de cerimônias (dentro de 29 dias) usado na tela de
+// Pagamentos — soma o preço de pacote (price_2d) por par, em vez de dividir/decidir por linha.
+// É o valor que o admin confere antes de mandar o link, então tem que bater com o que ele vê lá.
+function computeBasePrice(allParticipants) {
+  const merged = new Set();
+  let total = 0;
+  let any = false;
+  for (const p of allParticipants) {
+    if (merged.has(p.event_id)) continue;
+    if (!p.date1_confirmed && !p.date2_confirmed) continue;
+    any = true;
+    const partner = allParticipants.find(x => {
+      if (x.event_id === p.event_id || merged.has(x.event_id)) return false;
+      const td = [];
+      if (p.date1_confirmed && p.events?.date) td.push(p.events.date);
+      if (p.date2_confirmed && p.events?.date2) td.push(p.events.date2);
+      const od = [];
+      if (x.date1_confirmed && x.events?.date) od.push(x.events.date);
+      if (x.date2_confirmed && x.events?.date2) od.push(x.events.date2);
+      for (const d1 of td) for (const d2 of od)
+        if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) return true;
+      return false;
+    });
+    if (partner) {
+      merged.add(p.event_id);
+      merged.add(partner.event_id);
+      const price2d = p.events?.price_2d ?? partner.events?.price_2d ?? null;
+      if (price2d != null) total += price2d;
+    } else {
+      const price = (p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
+      if (price != null) total += price;
     }
   }
-  return (p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
+  return any ? total : null;
 }
 
 const s = {
@@ -245,8 +255,7 @@ export default function PagamentoPage({ params }) {
     return days;
   });
 
-  const expectedAmounts = participants.map(p => computeExpected(p, participants)).filter(v => v != null);
-  const basePrice = expectedAmounts.length > 0 ? expectedAmounts.reduce((s, v) => s + v, 0) : null;
+  const basePrice = computeBasePrice(participants);
 
   const sumOut = transfersOut.reduce((s, t) => s + Number(t.amount), 0);
   const sumIn = transfersIn.reduce((s, t) => s + Number(t.amount), 0);
