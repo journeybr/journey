@@ -398,6 +398,16 @@ export default function PagamentoPage({ params }) {
           </>
         )}
 
+        {/* Debug temporário — acrescente ?debug=1 na URL pra ver os números intermediários. */}
+        {typeof window !== 'undefined' && window.location.search.includes('debug') && (
+          <pre style={{ fontSize: '10px', background: '#fdf6ea', border: '0.5px dashed #e8d8b0', padding: '0.6rem', whiteSpace: 'pre-wrap', marginTop: '1rem' }}>
+{JSON.stringify({
+  participants: participants.map(p => ({ event: p.events?.name, event_id: p.event_id, date1_confirmed: p.date1_confirmed, date2_confirmed: p.date2_confirmed, price_1d: p.events?.price_1d, price_2d: p.events?.price_2d, discount: p.discount })),
+  basePrice, sumOut, sumIn, totalDiscount, price,
+}, null, 2)}
+          </pre>
+        )}
+
         <p style={s.note}>
           * Caso você tenha dúvidas sobre o dia reservado ou valor, fala com a gente!
         </p>
