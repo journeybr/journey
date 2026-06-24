@@ -657,6 +657,24 @@ export default function PagamentosPage() {
     });
   }, [transfers, participants]);
 
+  // Transferências de SAÍDA cujo event_id não corresponde a nenhuma linha ativa do remetente —
+  // ficam invisíveis em qualquer card (transfersOutMap não acha onde pendurar), mesmo que o
+  // remetente seja participante ativo em OUTRA cerimônia. Precisa de uma seção própria para
+  // não sumir do radar — é dinheiro que ainda está sendo cobrado em algum lugar.
+  const orphanOutTransferEntries = useMemo(() => {
+    const groups = {};
+    transfers.forEach(t => {
+      const isOrphan = !participants.some(p => p.contact_id === t.from_contact_id && p.event_id === t.event_id);
+      if (!isOrphan) return;
+      const key = t.from_contact_id;
+      if (!groups[key]) {
+        groups[key] = { id: `orphan-out-${key}`, contact_id: t.from_contact_id, contacts: t.from_contact, transfersList: [] };
+      }
+      groups[key].transfersList.push(t);
+    });
+    return Object.values(groups);
+  }, [transfers, participants]);
+
   // Independente de cerimônia — não filtra por selectedCeremony, só por pessoa/data.
   const filteredOrphans = useMemo(() => {
     return orphanTransferEntries.filter(o => {
@@ -863,6 +881,33 @@ export default function PagamentosPage() {
             </div>
           )}
         </div>
+
+        {!loading && orphanOutTransferEntries.length > 0 && (
+          <div style={{ marginBottom: '2rem', border: '0.5px solid #d9a05c', borderRadius: '2px', overflow: 'hidden' }}>
+            <div style={{ padding: '0.6rem 1rem', background: '#fdf6ea', borderBottom: '0.5px dashed #d9a05c', fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#a06030' }}>
+              ⚠ transferências de saída sem cerimônia ativa correspondente — revisar
+            </div>
+            {orphanOutTransferEntries.map(g => {
+              const name = g.contacts?.nickname || g.contacts?.name || '—';
+              const list = g.transfersList;
+              const total = list.reduce((s, t) => s + Number(t.amount), 0);
+              return (
+                <div key={g.id}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7' }}>
+                    <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                    <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
+                  </div>
+                  {list.map((t, i) => (
+                    <TransferLine key={t.id} t={t} direction="out" isLast={i === list.length - 1}
+                      onSetStatus={(s) => setTransferStatus(t.id, s)}
+                      onCancel={() => cancelTransfer(t.id)}
+                      onOpenLog={() => setLogModal({ name: t.to_contact?.nickname || t.to_contact?.name || '—', log: t.log || [], isMerged: true })} />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {loading ? (
           <div style={{ padding: '4rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.08em' }}>carregando...</div>
