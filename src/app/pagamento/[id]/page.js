@@ -36,7 +36,7 @@ function computeBasePrice(allParticipants) {
       const price2d = p.events?.price_2d ?? partner.events?.price_2d ?? null;
       if (price2d != null) total += price2d;
     } else {
-      const price = (p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
+      const price = (p.date1_confirmed && p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
       if (price != null) total += price;
     }
   }

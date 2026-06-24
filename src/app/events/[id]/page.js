@@ -1184,7 +1184,7 @@ export default function EventDetail({ params }) {
   async function confirmPayment(contactId) {
     const today = new Date().toISOString().split('T')[0];
     const p = participants.find(x => x.contact_id === contactId);
-    const amount = (p?.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+    const amount = (p?.date1_confirmed && p?.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
     const updateData = {
       payment_status: 'pago',
       payment_method: 'Câmbio',
@@ -1508,7 +1508,7 @@ export default function EventDetail({ params }) {
           return (
             <div
               style={{ ...s.paidCell, cursor: 'pointer', opacity: cellOpacity, color: col }}
-              onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+              onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
             >
               <CoinIcon status={ps} />
               <span style={{ lineHeight: 1 }}>{label}</span>
@@ -1644,7 +1644,7 @@ export default function EventDetail({ params }) {
               const ps = p.payment_status || 'em aberto';
               return (
                 <span
-                  onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                  onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
                   title="Pagamento"
                 >
@@ -2465,7 +2465,7 @@ export default function EventDetail({ params }) {
                         const isRegistering = registerInstallment?.contactId === p.contact_id;
                         const expectedAmount = crossCeremonyExpected[p.contact_id] !== undefined
                           ? crossCeremonyExpected[p.contact_id]
-                          : (p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+                          : (p.date1_confirmed && p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
                         const otherEvents = otherEventsMap[p.contact_id] || [];
                         const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
                         const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - (p.discount || 0)) : null;
@@ -2475,7 +2475,7 @@ export default function EventDetail({ params }) {
                             <div key={p.contact_id} style={{ marginBottom: '12px', border: '0.5px solid #e8b87a', borderRadius: '2px', background: '#fefaf3' }}>
                               {/* Header */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', borderBottom: '0.5px dashed #e8b87a', cursor: 'pointer' }}
-                                onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                                onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
                               >
                                 <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
                                   {p.contacts?.nickname || p.contacts?.name}
@@ -2566,7 +2566,7 @@ export default function EventDetail({ params }) {
                           <div key={p.contact_id} style={{ marginBottom: '10px' }}>
                             {/* Nome + botão editar status */}
                             <div
-                              onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                              onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
                               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer' }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

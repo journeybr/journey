@@ -65,7 +65,7 @@ function computeExpected(p, allParticipants) {
       }
     }
   }
-  return (p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
+  return (p.date1_confirmed && p.date2_confirmed && p.events?.price_2d) ? p.events.price_2d : (p.events?.price_1d ?? null);
 }
 
 function TransferLine({ t, direction, isLast, onSetStatus, onCancel, onOpenLog }) {
