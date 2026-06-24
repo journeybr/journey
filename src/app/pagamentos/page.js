@@ -311,7 +311,11 @@ export default function PagamentosPage() {
     } else {
       logMsg = `alterou status para ${paymentStatus}`;
     }
-    updateData.discount = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+    const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+    updateData.discount = discountVal;
+    if (discountVal !== (prevState?.discount ?? null)) {
+      logMsg += discountVal != null ? ` · desconto de $${discountVal.toFixed(2)}` : ' · removeu desconto';
+    }
     updateData.payment_log = [...getLog(contactId, eventId), newLogEntry(logMsg, prevState)];
 
     const { error } = await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
@@ -522,7 +526,11 @@ export default function PagamentosPage() {
         updateData.installment_count = null; updateData.payment_records = [];
         logMsg = 'registrou A Pagar no Local';
       } else { logMsg = `alterou status para ${paymentStatus}`; }
-      updateData.discount = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+      const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+      updateData.discount = discountVal;
+      if (discountVal !== (prevState?.discount ?? null)) {
+        logMsg += discountVal != null ? ` · desconto de $${discountVal.toFixed(2)}` : ' · removeu desconto';
+      }
       updateData.payment_log = [...(actual?.payment_log || []), newLogEntry(logMsg, prevState)];
       await supabase.from('event_participants').update(updateData).match({ event_id: rowP.event_id, contact_id: rowP.contact_id });
       updateLocal(rowP.contact_id, rowP.event_id, updateData);
@@ -689,7 +697,7 @@ export default function PagamentosPage() {
       const baseExpected = p._merged ? p._expectedAmount : computeExpected(p, participants);
       const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);
       const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
-      const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar) : null;
+      const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - (p.discount || 0)) : null;
 
       // Saldo próprio resolvido (owed<=0): se ainda há transferência de saída pendente, mostra
       // "transferido" em vez de "pago" — só conta como pago/no local quando o destinatário resolver.
@@ -1114,6 +1122,26 @@ export default function PagamentosPage() {
                   ))}
                 </div>
               </div>
+
+              <div style={{ padding: '1rem 1.5rem 0' }}>
+                <div style={{ padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={!!paymentModal.applyDiscount}
+                      onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
+                      style={{ cursor: 'pointer' }} />
+                    <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Desconto no valor total?</span>
+                  </label>
+                  {paymentModal.applyDiscount && (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: '#7a7268' }}>USD</span>
+                      <input type="number" min="0" step="0.01" value={paymentModal.discount}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, discount: e.target.value }))}
+                        style={{ width: '90px', padding: '5px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {paymentModal.status === 'parcelado' && (
                 <div style={{ padding: '1rem 1.5rem 0' }}>
                   <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Nº de parcelas</div>
@@ -1128,7 +1156,7 @@ export default function PagamentosPage() {
                   <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Forma de pagamento</div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.8rem' }}>
                     {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
-                      <button key={m} onClick={() => setPaymentModal(prev => ({ ...prev, method: m, applyDiscount: m === 'Espécie' ? prev.applyDiscount : false, discount: m === 'Espécie' ? (prev.discount || '50.00') : '' }))}
+                      <button key={m} onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
                         style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}>
                         {m}
                       </button>
@@ -1149,24 +1177,6 @@ export default function PagamentosPage() {
                         style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: `0.5px solid ${paymentModal.paymentDate ? '#c8c2b8' : '#e8a0a0'}`, borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }} />
                     </div>
                   </div>
-                  {paymentModal.method === 'Espécie' && (
-                    <div style={{ marginTop: '0.8rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                        <input type="checkbox" checked={!!paymentModal.applyDiscount}
-                          onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
-                          style={{ cursor: 'pointer' }} />
-                        <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Aplicar desconto?</span>
-                      </label>
-                      {paymentModal.applyDiscount && (
-                        <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '11px', color: '#7a7268' }}>USD</span>
-                          <input type="number" min="0" step="0.01" value={paymentModal.discount}
-                            onChange={e => setPaymentModal(prev => ({ ...prev, discount: e.target.value }))}
-                            style={{ width: '90px', padding: '5px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', gap: '0.6rem', marginTop: '0.8rem' }}>

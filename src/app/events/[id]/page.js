@@ -900,12 +900,20 @@ export default function EventDetail({ params }) {
   }
 
   async function transferParticipant(contactId, targetEventId) {
-    await supabase.from('event_participants').update({ status: 'desistiu' }).match({ event_id: eventId, contact_id: contactId });
-    const { data: existing } = await supabase.from('event_participants').select('id, status').match({ event_id: targetEventId, contact_id: contactId }).maybeSingle();
+    const p = participants.find(x => x.contact_id === contactId);
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const targetName = activeOtherEvents.find(ev => ev.id === targetEventId)?.name || '—';
+    const fromEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`transferiu ${firstName} para "${targetName}"`)];
+    await supabase.from('event_participants').update({ status: 'desistiu', enrollment_log: fromEnrollmentLog }).match({ event_id: eventId, contact_id: contactId });
+
+    const toLogEntry = newLogEntry(`recebeu ${firstName} transferido de "${event?.name || '—'}"`);
+    const { data: existing } = await supabase.from('event_participants').select('id, status, enrollment_log').match({ event_id: targetEventId, contact_id: contactId }).maybeSingle();
     if (existing) {
-      if (existing.status === 'desistiu') await supabase.from('event_participants').update({ status: 'intenção de ir' }).match({ event_id: targetEventId, contact_id: contactId });
+      if (existing.status === 'desistiu') {
+        await supabase.from('event_participants').update({ status: 'intenção de ir', enrollment_log: [...(existing.enrollment_log || []), toLogEntry] }).match({ event_id: targetEventId, contact_id: contactId });
+      }
     } else {
-      await supabase.from('event_participants').insert([{ contact_id: contactId, event_id: targetEventId, status: 'intenção de ir' }]);
+      await supabase.from('event_participants').insert([{ contact_id: contactId, event_id: targetEventId, status: 'intenção de ir', enrollment_log: [toLogEntry] }]);
     }
     setTransferModal(null);
     fetchEventData();

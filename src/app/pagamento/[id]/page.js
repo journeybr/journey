@@ -228,7 +228,8 @@ export default function PagamentoPage({ params }) {
 
   const sumOut = transfersOut.reduce((s, t) => s + Number(t.amount), 0);
   const sumIn = transfersIn.reduce((s, t) => s + Number(t.amount), 0);
-  const price = basePrice != null ? (basePrice - sumOut + sumIn) : (sumIn > 0 ? sumIn : null);
+  const totalDiscount = participants.reduce((s, p) => s + (p.discount || 0), 0);
+  const price = basePrice != null ? (basePrice - sumOut + sumIn - totalDiscount) : (sumIn > 0 ? sumIn : null);
 
   const firstName = (contact?.nickname || contact?.name || '').split(' ')[0];
 
@@ -373,6 +374,11 @@ export default function PagamentoPage({ params }) {
             {sumOut > 0 && (
               <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#b07a4a', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
                 Já descontado US$ {sumOut.toFixed(2)} transferido para {transfersOut.map(t => t.to_contact?.nickname || t.to_contact?.name).join(', ')}.
+              </p>
+            )}
+            {totalDiscount > 0 && (
+              <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#8a7a58', lineHeight: 1.6, margin: '0 0 0.6rem', letterSpacing: '0.02em' }}>
+                Já inclui desconto de US$ {totalDiscount.toFixed(2)}.
               </p>
             )}
           </>

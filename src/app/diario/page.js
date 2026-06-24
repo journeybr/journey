@@ -73,9 +73,14 @@ export default function DiarioPage() {
 
   async function fetchData() {
     setLoading(true);
-    const { data } = await supabase
-      .from('event_participants')
-      .select('enrollment_log, payment_log, contacts(id, name, nickname), events!inner(id, name, date, active)');
+    const [{ data }, { data: transfersData }] = await Promise.all([
+      supabase
+        .from('event_participants')
+        .select('enrollment_log, payment_log, contacts(id, name, nickname), events!inner(id, name, date, active)'),
+      supabase
+        .from('payment_transfers')
+        .select('log, from_contact:contacts!from_contact_id(name,nickname), to_contact:contacts!to_contact_id(name,nickname), events!inner(id, name, active)'),
+    ]);
 
     const entries = [];
     (data || [])
@@ -89,6 +94,18 @@ export default function DiarioPage() {
         );
         (p.payment_log || []).forEach(e =>
           entries.push({ ...e, _name: name, _ceremony: ceremony, _eventId: eventId, _type: 'pagamento' })
+        );
+      });
+
+    (transfersData || [])
+      .filter(t => t.events?.active !== false)
+      .forEach(t => {
+        const fromName = t.from_contact?.nickname || t.from_contact?.name || '—';
+        const toName = t.to_contact?.nickname || t.to_contact?.name || '—';
+        const ceremony = t.events?.name || '—';
+        const eventId = t.events?.id;
+        (t.log || []).forEach(e =>
+          entries.push({ ...e, _name: `${fromName} → ${toName}`, _ceremony: ceremony, _eventId: eventId, _type: 'transferência' })
         );
       });
 
@@ -219,9 +236,10 @@ export default function DiarioPage() {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '4px' }}>
           {[
-            { key: 'inscrição',  label: 'Inscrição',   color: '#5d9470', bg: '#eef5f0' },
-            { key: 'pagamento',  label: 'Pagamento',   color: '#7a68a4', bg: '#f0eef8' },
-            { key: 'ficha',      label: 'Ficha',       color: '#b87a1a', bg: '#fdf3e3' },
+            { key: 'inscrição',     label: 'Inscrição',     color: '#5d9470', bg: '#eef5f0' },
+            { key: 'pagamento',     label: 'Pagamento',     color: '#7a68a4', bg: '#f0eef8' },
+            { key: 'transferência', label: 'Transferência', color: '#5d8a9a', bg: '#eaf3f5' },
+            { key: 'ficha',         label: 'Ficha',         color: '#b87a1a', bg: '#fdf3e3' },
           ].map(t => (
             <button
               key={t.key}
@@ -255,7 +273,7 @@ export default function DiarioPage() {
               hour: '2-digit', minute: '2-digit',
               timeZone: 'America/Sao_Paulo',
             });
-            const typeColors = { pagamento: { fg: '#7a68a4', bg: '#f0eef8' }, ficha: { fg: '#b87a1a', bg: '#fdf3e3' } };
+            const typeColors = { pagamento: { fg: '#7a68a4', bg: '#f0eef8' }, 'transferência': { fg: '#5d8a9a', bg: '#eaf3f5' }, ficha: { fg: '#b87a1a', bg: '#fdf3e3' } };
             const tc = typeColors[entry._type] || { fg: '#5d9470', bg: '#eef5f0' };
             return (
               <div
