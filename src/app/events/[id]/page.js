@@ -1123,7 +1123,11 @@ export default function EventDetail({ params }) {
       logMsg = `alterou status para ${paymentStatus}`;
     }
 
-    updateData.discount = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+    const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
+    updateData.discount = discountVal;
+    if (discountVal !== (prevState?.discount ?? null)) {
+      logMsg += discountVal != null ? ` · desconto de $${discountVal.toFixed(2)}` : ' · removeu desconto';
+    }
     updateData.payment_log = [...getParticipantLog(contactId), newLogEntry(logMsg, prevState)];
 
     const { error } = await supabase
@@ -2276,7 +2280,7 @@ export default function EventDetail({ params }) {
                     {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
                       <button
                         key={m}
-                        onClick={() => setPaymentModal(prev => ({ ...prev, method: m, applyDiscount: m === 'Espécie' ? prev.applyDiscount : false, discount: m === 'Espécie' ? (prev.discount || '50.00') : '' }))}
+                        onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
                         style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}
                       >
                         {m}
@@ -2304,33 +2308,34 @@ export default function EventDetail({ params }) {
                       />
                     </div>
                   </div>
-                  {/* Desconto — só quando pagou em espécie */}
-                  {paymentModal.method === 'Espécie' && (
-                    <div style={{ marginTop: '0.8rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={!!paymentModal.applyDiscount}
-                          onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
-                          style={{ cursor: 'pointer' }}
-                        />
-                        <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Aplicar desconto?</span>
-                      </label>
-                      {paymentModal.applyDiscount && (
-                        <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '11px', color: '#7a7268' }}>USD</span>
-                          <input
-                            type="number" min="0" step="0.01"
-                            value={paymentModal.discount}
-                            onChange={e => setPaymentModal(prev => ({ ...prev, discount: e.target.value }))}
-                            style={{ width: '90px', padding: '5px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}
-                          />
-                        </div>
-                      )}
+                </div>
+              )}
+
+              {/* Desconto no valor total — independente de status/método */}
+              <div style={{ padding: '1rem 1.5rem 0' }}>
+                <div style={{ padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={!!paymentModal.applyDiscount}
+                      onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Desconto no valor total?</span>
+                  </label>
+                  {paymentModal.applyDiscount && (
+                    <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: '#7a7268' }}>USD</span>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={paymentModal.discount}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, discount: e.target.value }))}
+                        style={{ width: '90px', padding: '5px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}
+                      />
                     </div>
                   )}
                 </div>
-              )}
+              </div>
 
               {/* Footer */}
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
@@ -2460,7 +2465,7 @@ export default function EventDetail({ params }) {
                           : (p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
                         const otherEvents = otherEventsMap[p.contact_id] || [];
                         const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
-                        const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar) : null;
+                        const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - (p.discount || 0)) : null;
 
                         if (isConferirGroup) {
                           return (
