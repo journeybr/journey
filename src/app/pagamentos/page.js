@@ -568,22 +568,20 @@ export default function PagamentosPage() {
     return m;
   }, [transfers]);
 
-  // Transferências cujo responsável não é participante deste evento — entram como linha própria,
-  // agrupadas por pessoa + cerimônia (uma pessoa pode receber de várias outras).
+  // Transferências cujo responsável não é participante daquele evento — entram como linha própria,
+  // agrupadas só por pessoa (independente da cerimônia de cada transferência).
   const orphanTransferEntries = useMemo(() => {
     const groups = {};
     transfers.forEach(t => {
       const isOrphan = !participants.some(p => p.contact_id === t.to_contact_id && p.event_id === t.event_id);
       if (!isOrphan) return;
-      const key = `${t.to_contact_id}-${t.event_id}`;
+      const key = t.to_contact_id;
       if (!groups[key]) {
         groups[key] = {
           _isTransferOnly: true,
           id: `transfer-group-${key}`,
           contact_id: t.to_contact_id,
-          event_id: t.event_id,
           contacts: t.to_contact,
-          events: t.events,
           transfersList: [],
         };
       }
@@ -596,9 +594,9 @@ export default function PagamentosPage() {
     });
   }, [transfers, participants]);
 
+  // Independente de cerimônia — não filtra por selectedCeremony, só por pessoa/data.
   const filteredOrphans = useMemo(() => {
     return orphanTransferEntries.filter(o => {
-      if (selectedCeremony && o.event_id !== selectedCeremony) return false;
       if (personSearch) {
         const q = personSearch.toLowerCase();
         const nm = (o.contacts?.nickname || o.contacts?.name || '').toLowerCase();
@@ -617,7 +615,7 @@ export default function PagamentosPage() {
       }
       return true;
     });
-  }, [orphanTransferEntries, selectedCeremony, personSearch, dateFrom, dateTo]);
+  }, [orphanTransferEntries, personSearch, dateFrom, dateTo]);
 
   const displayParticipants = useMemo(() => {
     if (selectedCeremony) return filtered;
