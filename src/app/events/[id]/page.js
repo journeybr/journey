@@ -2321,7 +2321,7 @@ export default function EventDetail({ params }) {
                       onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
                       style={{ cursor: 'pointer' }}
                     />
-                    <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Desconto no valor total?</span>
+                    <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Inserir desconto</span>
                   </label>
                   {paymentModal.applyDiscount && (
                     <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
