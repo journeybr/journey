@@ -1212,9 +1212,9 @@ export default function PagamentosPage() {
 
                   return (
                     <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '10px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: hasOtherLines ? '2px 2px 0 0' : '2px' }}>
-                        <div onClick={() => { if (showPaymentBlock) setRegisterInstallment(isFormActive ? null : { contactId: p.contact_id, eventId: p.event_id, amount: '', date: '' }); else openPaymentModal(); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, cursor: 'pointer' }}>
+                      <div onClick={openPaymentModal}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: hasOtherLines ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530', flexShrink: 0 }}>{name}</span>
                           {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />}
                           {p.payment_observation && (
@@ -1224,14 +1224,21 @@ export default function PagamentosPage() {
                               obs
                             </button>
                           )}
+                          {showPaymentBlock && (
+                            <button onClick={e => { e.stopPropagation(); setRegisterInstallment(isFormActive ? null : { contactId: p.contact_id, eventId: p.event_id, amount: '', date: '' }); }}
+                              title="Registrar pagamento"
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '14px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
+                              +$
+                            </button>
+                          )}
                           <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: name, toContactId: '', amount: '', observation: '' }); }}
                             title="Transferir"
                             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '15px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
                             ⇄
                           </button>
                         </div>
-                        <div onClick={openPaymentModal}
-                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px', cursor: 'pointer' }}>
+                        <div
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px' }}>
                           {!isPago && !isTransferido && owed != null && (
                             <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {Number(owed).toFixed(2)}</span>
                           )}
