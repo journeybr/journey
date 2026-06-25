@@ -186,7 +186,6 @@ export default function PagamentosPage() {
   const [obsModal, setObsModal] = useState(null);
   const [logModal, setLogModal] = useState(null);
   const [confirmPartialModal, setConfirmPartialModal] = useState(null);
-  const [registerInstallment, setRegisterInstallment] = useState(null);
   const [contactsList, setContactsList] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
@@ -484,22 +483,6 @@ export default function PagamentosPage() {
   // A pessoa quita o SALDO, não cada transferência recebida individualmente — por isso, quando
   // o pagamento registrado cobre o que falta (owedBefore), as transferências de entrada ainda
   // pendentes são marcadas como pagas automaticamente, sem precisar de um botão por linha.
-  async function addInstallmentPayment(contactId, eventId, amount, date, owedBefore = null, inTransfersToResolve = []) {
-    const p = getParticipant(contactId, eventId);
-    const existing = p?.payment_records || [];
-    const newRecords = [...existing, { amount: parseFloat(amount), date: date || null, cancelled: false }];
-    const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
-    const updateData = { payment_records: newRecords, payment_log: [...getLog(contactId, eventId), newLogEntry(`registrou pagamento de $${Number(amount).toFixed(2)}${dateStr ? ` em ${dateStr}` : ''}`)] };
-    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
-    updateLocal(contactId, eventId, updateData);
-
-    if (owedBefore != null && owedBefore - parseFloat(amount) <= 0.005) {
-      for (const t of inTransfersToResolve) {
-        if (t.status !== 'pago' && t.status !== 'a pagar no local') await setTransferStatus(t.id, 'pago');
-      }
-    }
-  }
-
   async function cancelInstallmentPayment(contactId, eventId, index) {
     const p = getParticipant(contactId, eventId);
     const existing = p?.payment_records || [];
@@ -1204,10 +1187,8 @@ export default function PagamentosPage() {
                   const baseExpected = p._baseExpected;
                   const ceremonyLabel = p._merged ? p._ceremonyLabel : (p.events?.name || 'Cerimônia');
                   const hasOtherLines = records.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
-                  const showPaymentBlock = !isPago && !isNoLocal;
-                  const isFormActive = registerInstallment?.contactId === p.contact_id && registerInstallment?.eventId === p.event_id;
                   const hasTransfersOrDiscount = (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
-                  const noMoreBlocksAfter = !(isFormActive || isNoLocal || (p.payment_log?.length > 0));
+                  const noMoreBlocksAfter = !(isNoLocal || (p.payment_log?.length > 0));
                   const combinedLog = combineLogs(p.payment_log, ...outTransfers.map(t => t.log), ...inTransfers.map(t => t.log));
 
                   return (
@@ -1222,13 +1203,6 @@ export default function PagamentosPage() {
                               title="Ver observação"
                               style={{ background: 'none', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer', padding: '1px 5px', fontFamily: "'Courier Prime', monospace", fontSize: '8px', letterSpacing: '0.08em', color: '#9a9288', textTransform: 'uppercase', lineHeight: 1.6, flexShrink: 0 }}>
                               obs
-                            </button>
-                          )}
-                          {showPaymentBlock && (
-                            <button onClick={e => { e.stopPropagation(); setRegisterInstallment(isFormActive ? null : { contactId: p.contact_id, eventId: p.event_id, amount: '', date: '' }); }}
-                              title="Registrar pagamento"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '14px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
-                              +$
                             </button>
                           )}
                           <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: name, toContactId: '', amount: '', observation: '' }); }}
@@ -1277,30 +1251,6 @@ export default function PagamentosPage() {
                           );
                         });
                       })()}
-
-                      {isFormActive && (
-                        <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', background: '#fdfbf7' }}>
-                          <div style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                            <div>
-                              <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
-                              <input type="number" min="0" step="0.01" value={registerInstallment.amount}
-                                onChange={e => setRegisterInstallment(prev => ({ ...prev, amount: e.target.value }))}
-                                placeholder="0.00" autoFocus
-                                style={{ width: '80px', padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
-                            </div>
-                            <div>
-                              <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
-                              <input type="date" value={registerInstallment.date}
-                                onChange={e => setRegisterInstallment(prev => ({ ...prev, date: e.target.value }))}
-                                style={{ padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
-                            </div>
-                            <button onClick={() => { if (!registerInstallment.amount || !registerInstallment.date) return; addInstallmentPayment(p.contact_id, p.event_id, registerInstallment.amount, registerInstallment.date, owed, inTransfers); setRegisterInstallment(null); }}
-                              style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
-                            <button onClick={() => setRegisterInstallment(null)}
-                              style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>×</button>
-                          </div>
-                        </div>
-                      )}
 
                       {isNoLocal && (
                         <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.5rem 1rem' }}>
