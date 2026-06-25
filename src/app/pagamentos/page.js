@@ -638,7 +638,10 @@ export default function PagamentosPage() {
 
   // ── Resumo de pagamentos ─────────────────────────────────────────────────
   // Agrupa por PESSOA (não por linha) — um par pareado em 29 dias conta como UM grupo de 2 dias,
-  // mesmo que só uma das duas cerimônias do par esteja selecionada no resumo.
+  // mesmo que só uma das duas cerimônias do par esteja selecionada no resumo. Transferências são
+  // calculadas TOTALMENTE separado (ver transferIncomingEntries) e nunca entram aqui — assim
+  // dinheiro transferido só é contado uma vez, e sempre filtrado pela MESMA regra (event_id da
+  // transferência precisa estar nas cerimônias selecionadas), nas duas pontas.
   const resumoGroups = useMemo(() => {
     if (resumoCeremonies.size === 0) return [];
     const handled = new Set();
@@ -671,12 +674,11 @@ export default function PagamentosPage() {
       const discount = anchor.discount || 0;
       const records = rows.flatMap(r => r.payment_records || []);
       const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
-      const outTransfers = rows.flatMap(r => transfersOutMap[`${r.contact_id}-${r.event_id}`] || []);
-      const isPrimaryRow = primaryEventByContact[anchor.contact_id] === anchor.event_id;
-      const inTransfers = isPrimaryRow ? (transfersInMap[anchor.contact_id] || []) : [];
+      // Só conta transferência de SAÍDA cujo event_id também esteja no escopo selecionado —
+      // mesma regra usada do lado de quem recebe, pra nunca contar só uma ponta do par.
+      const outTransfers = rows.flatMap(r => transfersOutMap[`${r.contact_id}-${r.event_id}`] || []).filter(t => resumoCeremonies.has(t.event_id));
       const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
-      const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
-      const expectedAmount = price != null ? price - sumOut + sumIn : (sumIn > 0 ? sumIn : price);
+      const expectedAmount = price != null ? price - sumOut : price;
       const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - discount) : null;
       let effectiveStatus = anchor.payment_status || 'em aberto';
       if (owed != null && owed <= 0 && outTransfers.length > 0) {
@@ -687,19 +689,17 @@ export default function PagamentosPage() {
       groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, owed, effectiveStatus });
     }
     return groups;
-  }, [participants, resumoCeremonies, transfersOutMap, transfersInMap, primaryEventByContact]);
+  }, [participants, resumoCeremonies, transfersOutMap]);
 
-  // Quem recebeu transferência ligada a uma cerimônia selecionada mas cuja cerimônia "âncora"
-  // (primaryEventByContact) não está no escopo selecionado — inclui o caso de não ser
-  // participante de NENHUMA cerimônia ativa (ex: Pedro Ivo). Sem isso, o dinheiro transferido
-  // sai do total de quem enviou e não aparece em lugar nenhum do resumo.
-  const transferRecipientGroups = useMemo(() => {
+  // Lado de quem RECEBE — sempre calculado à parte (nunca via sumIn dentro de resumoGroups),
+  // pra não depender de "essa é a cerimônia âncora da pessoa" — isso é o que causava o resumo
+  // bater ou não bater dependendo de QUAL combinação de cerimônias era selecionada. Toda
+  // transferência cujo event_id esteja no escopo selecionado entra aqui, ponto.
+  const transferIncomingEntries = useMemo(() => {
     if (resumoCeremonies.size === 0) return [];
     const byRecipient = {};
     transfers.forEach(t => {
       if (!resumoCeremonies.has(t.event_id)) return;
-      const anchorEvent = primaryEventByContact[t.to_contact_id];
-      if (anchorEvent !== undefined && resumoCeremonies.has(anchorEvent)) return; // já contado via sumIn no grupo dele
       const key = t.to_contact_id;
       if (!byRecipient[key]) byRecipient[key] = { contactId: key, name: t.to_contact?.nickname || t.to_contact?.name || '—', transfersList: [] };
       byRecipient[key].transfersList.push(t);
@@ -710,12 +710,13 @@ export default function PagamentosPage() {
       const noLocal = g.transfersList.filter(t => t.status === 'a pagar no local').reduce((s, t) => s + Number(t.amount), 0);
       return { ...g, total, paid, noLocal, pending: total - paid - noLocal };
     });
-  }, [transfers, resumoCeremonies, primaryEventByContact]);
+  }, [transfers, resumoCeremonies]);
 
   const resumoSummary = useMemo(() => {
-    const twoDay = resumoGroups.filter(g => g.kind === '2d');
-    const oneDay = resumoGroups.filter(g => g.kind === '1d');
-    const discounted = resumoGroups.filter(g => g.discount > 0);
+    const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    const twoDay = [...resumoGroups.filter(g => g.kind === '2d')].sort(byName);
+    const oneDay = [...resumoGroups.filter(g => g.kind === '1d')].sort(byName);
+    const discounted = [...resumoGroups.filter(g => g.discount > 0)].sort(byName);
     const sumPrice = arr => arr.reduce((s, g) => s + (g.price || 0), 0);
     const totalDiscount = discounted.reduce((s, g) => s + g.discount, 0);
     const totalCobrado = sumPrice(resumoGroups) - totalDiscount;
@@ -724,13 +725,13 @@ export default function PagamentosPage() {
     const noLocalGroups = resumoGroups.filter(g => g.effectiveStatus === 'a pagar no local');
     const pagoGroups = resumoGroups.filter(g => g.paidSoFar > 0);
 
-    const recipPending = transferRecipientGroups.filter(g => g.pending > 0).map(g => ({ name: g.name, owed: g.pending }));
-    const recipNoLocal = transferRecipientGroups.filter(g => g.noLocal > 0).map(g => ({ name: g.name, owed: g.noLocal }));
-    const recipPaid = transferRecipientGroups.filter(g => g.paid > 0).map(g => ({ name: g.name, paidSoFar: g.paid }));
+    const recipPending = transferIncomingEntries.filter(g => g.pending > 0).map(g => ({ name: g.name, owed: g.pending }));
+    const recipNoLocal = transferIncomingEntries.filter(g => g.noLocal > 0).map(g => ({ name: g.name, owed: g.noLocal }));
+    const recipPaid = transferIncomingEntries.filter(g => g.paid > 0).map(g => ({ name: g.name, paidSoFar: g.paid }));
 
-    const aPagarAll = [...aPagarGroups, ...recipPending];
-    const noLocalAll = [...noLocalGroups, ...recipNoLocal];
-    const pagoAll = [...pagoGroups, ...recipPaid];
+    const aPagarAll = [...aPagarGroups, ...recipPending].sort(byName);
+    const noLocalAll = [...noLocalGroups, ...recipNoLocal].sort(byName);
+    const pagoAll = [...pagoGroups, ...recipPaid].sort(byName);
 
     const aPagar = { groups: aPagarAll, total: aPagarAll.reduce((s, g) => s + (g.owed || 0), 0) };
     const noLocal = { groups: noLocalAll, total: noLocalAll.reduce((s, g) => s + (g.owed || 0), 0) };
@@ -744,7 +745,7 @@ export default function PagamentosPage() {
       aPagar, noLocal, pago,
       totalAReceber: aPagar.total + noLocal.total + pago.total,
     };
-  }, [resumoGroups, transferRecipientGroups]);
+  }, [resumoGroups, transferIncomingEntries]);
 
   const toggleResumoExpanded = (k) => setResumoExpanded(prev => {
     const next = new Set(prev);
