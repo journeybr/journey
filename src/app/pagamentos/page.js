@@ -42,8 +42,22 @@ const STATUS_GROUPS = [
 
 const sortByName = (a, b) => (a.contacts?.nickname || a.contacts?.name || '').localeCompare(b.contacts?.nickname || b.contacts?.name || '', 'pt-BR');
 
+// Junta os logs de várias fontes (pagamento da linha + log de cada transferência ligada a ela)
+// em uma única timeline — um ícone só no nome em vez de um link "histórico" por linha.
+function combineLogs(...lists) {
+  return lists.flat().filter(Boolean).sort((a, b) => new Date(a.at) - new Date(b.at));
+}
 
-function TransferLine({ t, direction, isLast, onCancel, onOpenLog }) {
+function HistoryIcon({ onClick }) {
+  return (
+    <button onClick={e => { e.stopPropagation(); onClick(); }} title="Histórico"
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '13px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
+      ↺
+    </button>
+  );
+}
+
+function TransferLine({ t, direction, isLast, onCancel }) {
   const out = direction === 'out';
   const otherName = out ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—');
   const color = out ? '#b07a4a' : '#5d8a6a';
@@ -59,12 +73,6 @@ function TransferLine({ t, direction, isLast, onCancel, onOpenLog }) {
         <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
           {out ? '-' : '+'}$ {Number(t.amount).toFixed(2)}
         </span>
-        {t.log?.length > 0 && (
-          <button onClick={e => { e.stopPropagation(); onOpenLog(); }}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color, opacity: 0.75, letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
-            histórico{t.log.length > 1 ? ` (${t.log.length})` : ''}
-          </button>
-        )}
         <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancelar transferência"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
       </div>
@@ -108,7 +116,7 @@ function BaseLine({ label, amount }) {
   );
 }
 
-function PaymentRecordLine({ rec, isLast, onOpenLog, hasLog, logCount, onCancel }) {
+function PaymentRecordLine({ rec, isLast, onCancel }) {
   const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#eef3ef', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: isLast ? '0.5px solid #d0cbc2' : '0.5px dashed #d0cbc2', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
@@ -118,12 +126,6 @@ function PaymentRecordLine({ rec, isLast, onOpenLog, hasLog, logCount, onCancel 
       <span style={{ fontSize: '10px', color: rec.cancelled ? '#c0b8b0' : '#5d8a6a', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
         -$ {rec.amount != null ? Number(rec.amount).toFixed(2) : '—'}
       </span>
-      {hasLog && (
-        <button onClick={e => { e.stopPropagation(); onOpenLog(); }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
-          histórico{logCount > 1 ? ` (${logCount})` : ''}
-        </button>
-      )}
       {!rec.cancelled && (
         <button onClick={e => { e.stopPropagation(); onCancel(); }}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Excluir pagamento">×</button>
@@ -157,21 +159,6 @@ function ResumoMetric({ label, count, total, groups, expandKey, expanded, onTogg
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function LogFooter({ log, fmtLog, onOpenModal }) {
-  const last = log[log.length - 1];
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-      <span style={{ flex: 1, fontSize: '9px', color: '#b0a898', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5 }}>
-        {fmtLog(last)}
-      </span>
-      <button onClick={e => { e.stopPropagation(); onOpenModal(); }}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap', flexShrink: 0 }}>
-        histórico{log.length > 1 ? ` (${log.length})` : ''}
-      </button>
     </div>
   );
 }
@@ -257,10 +244,10 @@ export default function PagamentosPage() {
 
   // ── Transfer actions ──────────────────────────────────────────────────────
   async function createTransfer() {
-    const { fromContactId, eventId, toContactId, amount, observation } = transferModal;
+    const { fromContactId, fromName, eventId, toContactId, amount, observation } = transferModal;
     if (!toContactId || !amount) return;
     const toName = contactsList.find(c => c.id === toContactId)?.name || '—';
-    const logEntry = newLogEntry(`criou transferência de $${Number(amount).toFixed(2)} para ${toName}`);
+    const logEntry = newLogEntry(`criou transferência de $${Number(amount).toFixed(2)} de ${fromName || '—'} para ${toName}`);
     const { data, error } = await supabase
       .from('payment_transfers')
       .insert({
@@ -1054,16 +1041,19 @@ export default function PagamentosPage() {
               const name = g.contacts?.nickname || g.contacts?.name || '—';
               const list = g.transfersList;
               const total = list.reduce((s, t) => s + Number(t.amount), 0);
+              const combinedLog = combineLogs(...list.map(t => t.log));
               return (
                 <div key={g.id}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7' }}>
-                    <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                      {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, isMerged: true })} />}
+                    </div>
                     <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
                   </div>
                   {list.map((t, i) => (
                     <TransferLine key={t.id} t={t} direction="out" isLast={i === list.length - 1}
-                      onCancel={() => cancelTransfer(t.id)}
-                      onOpenLog={() => setLogModal({ name: t.to_contact?.nickname || t.to_contact?.name || '—', log: t.log || [], isMerged: true })} />
+                      onCancel={() => cancelTransfer(t.id)} />
                   ))}
                 </div>
               );
@@ -1101,16 +1091,19 @@ export default function PagamentosPage() {
                     const name = p.contacts?.nickname || p.contacts?.name || '—';
                     const list = p.transfersList;
                     const total = list.reduce((s, t) => s + Number(t.amount), 0);
+                    const combinedLog = combineLogs(...list.map(t => t.log));
                     return (
                       <div key={p.id} style={{ marginBottom: '10px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px 2px 0 0' }}>
-                          <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                            {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, isMerged: true })} />}
+                          </div>
                           <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
                         </div>
                         {list.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
-                            onCancel={() => cancelTransfer(t.id)}
-                            onOpenLog={() => setLogModal({ name: t.from_contact?.nickname || t.from_contact?.name || '—', log: t.log || [], isMerged: true })} />
+                            onCancel={() => cancelTransfer(t.id)} />
                         ))}
                       </div>
                     );
@@ -1139,11 +1132,13 @@ export default function PagamentosPage() {
                   });
 
                   if (isConferir) {
+                    const combinedLog = combineLogs(p.payment_log, ...outTransfers.map(t => t.log), ...inTransfers.map(t => t.log));
                     return (
                       <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '12px', border: '0.5px solid #e8b87a', borderRadius: '2px', background: '#fefaf3' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', borderBottom: '0.5px dashed #e8b87a', cursor: 'pointer' }} onClick={openPaymentModal}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
+                            {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />}
                             <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: name, toContactId: '', amount: '', observation: '' }); }}
                               title="Transferir"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '15px', color: '#9a9288', lineHeight: 1, flexShrink: 0 }}>
@@ -1172,8 +1167,7 @@ export default function PagamentosPage() {
                         )}
                         {[...outTransfers.map(t => ({ ...t, _dir: 'out' })), ...inTransfers.map(t => ({ ...t, _dir: 'in' }))].map(t => (
                           <TransferLine key={t.id} t={t} direction={t._dir} isLast={false}
-                            onCancel={() => cancelTransfer(t.id)}
-                            onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
+                            onCancel={() => cancelTransfer(t.id)} />
                         ))}
                         <div style={{ padding: '0.6rem 1rem', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1202,10 +1196,6 @@ export default function PagamentosPage() {
                                 style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>×</button>
                             </div>
                           )}
-                          {(p.payment_log?.length > 0) && (
-                            <LogFooter log={p.payment_log} fmtLog={fmtLog}
-                              onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />
-                          )}
                         </div>
                       </div>
                     );
@@ -1215,15 +1205,18 @@ export default function PagamentosPage() {
                   const ceremonyLabel = p._merged ? p._ceremonyLabel : (p.events?.name || 'Cerimônia');
                   const hasOtherLines = records.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
                   const showPaymentBlock = !isPago && !isNoLocal;
+                  const isFormActive = registerInstallment?.contactId === p.contact_id && registerInstallment?.eventId === p.event_id;
                   const hasTransfersOrDiscount = (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
-                  const noMoreBlocksAfter = !(showPaymentBlock || isNoLocal || (p.payment_log?.length > 0));
+                  const noMoreBlocksAfter = !(isFormActive || isNoLocal || (p.payment_log?.length > 0));
+                  const combinedLog = combineLogs(p.payment_log, ...outTransfers.map(t => t.log), ...inTransfers.map(t => t.log));
 
                   return (
                     <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '10px' }}>
-                      <div onClick={openPaymentModal}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: hasOtherLines ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: hasOtherLines ? '2px 2px 0 0' : '2px' }}>
+                        <div onClick={() => { if (showPaymentBlock) setRegisterInstallment(isFormActive ? null : { contactId: p.contact_id, eventId: p.event_id, amount: '', date: '' }); else openPaymentModal(); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, cursor: 'pointer' }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530', flexShrink: 0 }}>{name}</span>
+                          {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />}
                           {p.payment_observation && (
                             <button onClick={e => { e.stopPropagation(); setObsModal({ name, text: p.payment_observation }); }}
                               title="Ver observação"
@@ -1237,7 +1230,8 @@ export default function PagamentosPage() {
                             ⇄
                           </button>
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px' }}>
+                        <div onClick={openPaymentModal}
+                          style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px', cursor: 'pointer' }}>
                           {!isPago && !isTransferido && owed != null && (
                             <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {Number(owed).toFixed(2)}</span>
                           )}
@@ -1256,8 +1250,6 @@ export default function PagamentosPage() {
 
                       {records.map((rec, i) => (
                         <PaymentRecordLine key={i} rec={rec} isLast={!hasTransfersOrDiscount && i === records.length - 1 && noMoreBlocksAfter}
-                          hasLog={p.payment_log?.length > 0} logCount={p.payment_log?.length || 0}
-                          onOpenLog={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })}
                           onCancel={() => cancelInstallmentPayment(p.contact_id, p.event_id, i)} />
                       ))}
 
@@ -1274,57 +1266,42 @@ export default function PagamentosPage() {
                           }
                           return (
                             <TransferLine key={t.id} t={t} direction={t._dir} isLast={isLast}
-                              onCancel={() => cancelTransfer(t.id)}
-                              onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
+                              onCancel={() => cancelTransfer(t.id)} />
                           );
                         });
                       })()}
 
-                      {showPaymentBlock && (
+                      {isFormActive && (
                         <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', background: '#fdfbf7' }}>
-                          {registerInstallment?.contactId === p.contact_id && registerInstallment?.eventId === p.event_id ? (
-                            <div style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                              <div>
-                                <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
-                                <input type="number" min="0" step="0.01" value={registerInstallment.amount}
-                                  onChange={e => setRegisterInstallment(prev => ({ ...prev, amount: e.target.value }))}
-                                  placeholder="0.00" autoFocus
-                                  style={{ width: '80px', padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
-                              </div>
-                              <div>
-                                <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
-                                <input type="date" value={registerInstallment.date}
-                                  onChange={e => setRegisterInstallment(prev => ({ ...prev, date: e.target.value }))}
-                                  style={{ padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
-                              </div>
-                              <button onClick={() => { if (!registerInstallment.amount || !registerInstallment.date) return; addInstallmentPayment(p.contact_id, p.event_id, registerInstallment.amount, registerInstallment.date, owed, inTransfers); setRegisterInstallment(null); }}
-                                style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
-                              <button onClick={() => setRegisterInstallment(null)}
-                                style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>×</button>
+                          <div style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                            <div>
+                              <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
+                              <input type="number" min="0" step="0.01" value={registerInstallment.amount}
+                                onChange={e => setRegisterInstallment(prev => ({ ...prev, amount: e.target.value }))}
+                                placeholder="0.00" autoFocus
+                                style={{ width: '80px', padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
                             </div>
-                          ) : (
-                            <button onClick={e => { e.stopPropagation(); setRegisterInstallment({ contactId: p.contact_id, eventId: p.event_id, amount: '', date: '' }); }}
-                              style={{ width: '100%', padding: '0.45rem 1rem', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7a68a4', textAlign: 'left' }}>
-                              + registrar pagamento
-                            </button>
-                          )}
+                            <div>
+                              <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
+                              <input type="date" value={registerInstallment.date}
+                                onChange={e => setRegisterInstallment(prev => ({ ...prev, date: e.target.value }))}
+                                style={{ padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
+                            </div>
+                            <button onClick={() => { if (!registerInstallment.amount || !registerInstallment.date) return; addInstallmentPayment(p.contact_id, p.event_id, registerInstallment.amount, registerInstallment.date, owed, inTransfers); setRegisterInstallment(null); }}
+                              style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
+                            <button onClick={() => setRegisterInstallment(null)}
+                              style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>×</button>
+                          </div>
                         </div>
                       )}
 
                       {isNoLocal && (
-                        <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: p.payment_log?.length > 0 ? 'none' : '0.5px solid #d0cbc2', borderRadius: p.payment_log?.length > 0 ? 0 : '0 0 2px 2px', padding: '0.5rem 1rem' }}>
+                        <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.5rem 1rem' }}>
                           <button
                             onClick={e => { e.stopPropagation(); if (confirm(`Confirmar recebimento de ${name} no local?`)) confirmNoLocal(p.contact_id, p.event_id); }}
                             style={{ padding: '6px 12px', background: '#5d9470', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                             ✓ Confirmar recebimento
                           </button>
-                        </div>
-                      )}
-
-                      {(p.payment_log?.length > 0) && (
-                        <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.35rem 1rem' }}>
-                          <LogFooter log={p.payment_log} fmtLog={fmtLog}
-                            onOpenModal={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })} />
                         </div>
                       )}
                     </div>
