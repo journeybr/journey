@@ -43,19 +43,21 @@ const STATUS_GROUPS = [
 const sortByName = (a, b) => (a.contacts?.nickname || a.contacts?.name || '').localeCompare(b.contacts?.nickname || b.contacts?.name || '', 'pt-BR');
 
 
-function TransferLine({ t, direction, isLast, onSetStatus, onCancel, onOpenLog }) {
+function TransferLine({ t, direction, isLast, onCancel, onOpenLog }) {
   const out = direction === 'out';
   const otherName = out ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—');
   const color = out ? '#b07a4a' : '#5d8a6a';
   const bg = out ? '#fbf3ea' : '#eef6f0';
   const border = out ? '#e0c8a8' : '#bcdfc8';
   const statusLabel = t.status === 'pago' ? 'pago' : t.status === 'a pagar no local' ? 'no local' : t.status === 'conferir pagamento' ? 'conferir' : 'pendente';
-  const resolved = t.status === 'pago' || t.status === 'a pagar no local';
   return (
     <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: t.observation ? '0.4rem 1rem 1px' : '0.4rem 1rem' }}>
         <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-          {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · {statusLabel} · $ {Number(t.amount).toFixed(2)}
+          {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · {statusLabel}
+        </span>
+        <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
+          {out ? '-' : '+'}$ {Number(t.amount).toFixed(2)}
         </span>
         {t.log?.length > 0 && (
           <button onClick={e => { e.stopPropagation(); onOpenLog(); }}
@@ -63,17 +65,6 @@ function TransferLine({ t, direction, isLast, onSetStatus, onCancel, onOpenLog }
             histórico{t.log.length > 1 ? ` (${t.log.length})` : ''}
           </button>
         )}
-        {!out && (resolved ? (
-          <button onClick={e => { e.stopPropagation(); onSetStatus('pendente'); }} title="Desfazer status da transferência"
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c4892a', fontSize: '13px', padding: '0 2px', lineHeight: 1 }}>↺</button>
-        ) : (
-          <>
-            <button onClick={e => { e.stopPropagation(); onSetStatus('pago'); }} title="Marcar como pago"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '11px', padding: '0 2px' }}>✓</button>
-            <button onClick={e => { e.stopPropagation(); onSetStatus('a pagar no local'); }} title="Marcar como a pagar no local"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#8a7a58', fontSize: '11px', padding: '0 2px' }}>⌂</button>
-          </>
-        ))}
         <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Cancelar transferência"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
       </div>
@@ -93,12 +84,50 @@ function DiscountLine({ amount, isLast, onCancel }) {
   return (
     <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
-        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-          ◐ desconto · $ {Number(amount).toFixed(2)}
-        </span>
+        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>◐ desconto</span>
+        <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>-$ {Number(amount).toFixed(2)}</span>
         <button onClick={e => { e.stopPropagation(); onCancel(); }} title="Remover desconto"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
       </div>
+    </div>
+  );
+}
+
+function BaseLine({ label, amount }) {
+  return (
+    <div style={{ background: '#f3f1ec', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color: '#9a9288', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', fontStyle: 'italic' }}>
+          ⛯ {label}
+        </span>
+        <span style={{ fontSize: '10px', color: '#9a9288', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
+          $ {Number(amount).toFixed(2)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PaymentRecordLine({ rec, isLast, onOpenLog, hasLog, logCount, onCancel }) {
+  const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : null;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#eef3ef', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: isLast ? '0.5px solid #d0cbc2' : '0.5px dashed #d0cbc2', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <span style={{ flex: 1, fontSize: '10px', color: rec.cancelled ? '#c0b8b0' : '#5d8a6a', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+        pagamento{dateStr ? ` em ${dateStr}` : ''}{rec.cancelled ? ' (cancelado)' : ''}
+      </span>
+      <span style={{ fontSize: '10px', color: rec.cancelled ? '#c0b8b0' : '#5d8a6a', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
+        -$ {rec.amount != null ? Number(rec.amount).toFixed(2) : '—'}
+      </span>
+      {hasLog && (
+        <button onClick={e => { e.stopPropagation(); onOpenLog(); }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
+          histórico{logCount > 1 ? ` (${logCount})` : ''}
+        </button>
+      )}
+      {!rec.cancelled && (
+        <button onClick={e => { e.stopPropagation(); onCancel(); }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Excluir pagamento">×</button>
+      )}
     </div>
   );
 }
@@ -465,14 +494,23 @@ export default function PagamentosPage() {
     setConfirmPartialModal(null);
   }
 
-  async function addInstallmentPayment(contactId, eventId, amount, date) {
+  // A pessoa quita o SALDO, não cada transferência recebida individualmente — por isso, quando
+  // o pagamento registrado cobre o que falta (owedBefore), as transferências de entrada ainda
+  // pendentes são marcadas como pagas automaticamente, sem precisar de um botão por linha.
+  async function addInstallmentPayment(contactId, eventId, amount, date, owedBefore = null, inTransfersToResolve = []) {
     const p = getParticipant(contactId, eventId);
     const existing = p?.payment_records || [];
     const newRecords = [...existing, { amount: parseFloat(amount), date: date || null, cancelled: false }];
     const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
-    const updateData = { payment_records: newRecords, payment_log: [...getLog(contactId, eventId), newLogEntry(`registrou parcela de $${Number(amount).toFixed(2)}${dateStr ? ` em ${dateStr}` : ''}`)] };
+    const updateData = { payment_records: newRecords, payment_log: [...getLog(contactId, eventId), newLogEntry(`registrou pagamento de $${Number(amount).toFixed(2)}${dateStr ? ` em ${dateStr}` : ''}`)] };
     await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
     updateLocal(contactId, eventId, updateData);
+
+    if (owedBefore != null && owedBefore - parseFloat(amount) <= 0.005) {
+      for (const t of inTransfersToResolve) {
+        if (t.status !== 'pago' && t.status !== 'a pagar no local') await setTransferStatus(t.id, 'pago');
+      }
+    }
   }
 
   async function cancelInstallmentPayment(contactId, eventId, index) {
@@ -886,7 +924,7 @@ export default function PagamentosPage() {
         else effectiveStatus = 'transferido';
       }
 
-      return { ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn, _adjExpected: expectedAmount, _owed: owed, _effectiveStatus: effectiveStatus };
+      return { ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn, _baseExpected: baseExpected, _adjExpected: expectedAmount, _owed: owed, _effectiveStatus: effectiveStatus };
     });
   }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants]);
 
@@ -1024,7 +1062,6 @@ export default function PagamentosPage() {
                   </div>
                   {list.map((t, i) => (
                     <TransferLine key={t.id} t={t} direction="out" isLast={i === list.length - 1}
-                      onSetStatus={(s) => setTransferStatus(t.id, s)}
                       onCancel={() => cancelTransfer(t.id)}
                       onOpenLog={() => setLogModal({ name: t.to_contact?.nickname || t.to_contact?.name || '—', log: t.log || [], isMerged: true })} />
                   ))}
@@ -1072,7 +1109,6 @@ export default function PagamentosPage() {
                         </div>
                         {list.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction="in" isLast={i === list.length - 1}
-                            onSetStatus={(s) => setTransferStatus(t.id, s)}
                             onCancel={() => cancelTransfer(t.id)}
                             onOpenLog={() => setLogModal({ name: t.from_contact?.nickname || t.from_contact?.name || '—', log: t.log || [], isMerged: true })} />
                         ))}
@@ -1136,7 +1172,6 @@ export default function PagamentosPage() {
                         )}
                         {[...outTransfers.map(t => ({ ...t, _dir: 'out' })), ...inTransfers.map(t => ({ ...t, _dir: 'in' }))].map(t => (
                           <TransferLine key={t.id} t={t} direction={t._dir} isLast={false}
-                            onSetStatus={(s) => setTransferStatus(t.id, s)}
                             onCancel={() => cancelTransfer(t.id)}
                             onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
                         ))}
@@ -1176,10 +1211,17 @@ export default function PagamentosPage() {
                     );
                   }
 
+                  const baseExpected = p._baseExpected;
+                  const ceremonyLabel = p._merged ? p._ceremonyLabel : (p.events?.name || 'Cerimônia');
+                  const hasOtherLines = records.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
+                  const showPaymentBlock = !isPago && !isNoLocal;
+                  const hasTransfersOrDiscount = (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
+                  const noMoreBlocksAfter = !(showPaymentBlock || isNoLocal || (p.payment_log?.length > 0));
+
                   return (
                     <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '10px' }}>
                       <div onClick={openPaymentModal}
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: (records.length > 0 && (isParcelado || isPago || isTransferido)) || (outTransfers.length + inTransfers.length > 0) || p.discount > 0 ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: hasOtherLines ? '2px 2px 0 0' : '2px', cursor: 'pointer' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                           <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530', flexShrink: 0 }}>{name}</span>
                           {p.payment_observation && (
@@ -1208,24 +1250,15 @@ export default function PagamentosPage() {
                         </div>
                       </div>
 
-                      {(isParcelado || isPago || isTransferido) && records.map((rec, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#f5f0f8', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
-                          <span style={{ flex: 1, fontSize: '11px', color: rec.cancelled ? '#c0b8b0' : '#3a3530', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace" }}>
-                            Pago {rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '—'}
-                            {rec.date ? ` · ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
-                            {rec.cancelled ? ' (cancelado)' : ''}
-                          </span>
-                          {(p.payment_log?.length > 0) && (
-                            <button onClick={e => { e.stopPropagation(); setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null }); }}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', letterSpacing: '0.06em', padding: '0 2px', textDecoration: 'underline', textUnderlineOffset: '2px', whiteSpace: 'nowrap' }}>
-                              histórico{p.payment_log.length > 1 ? ` (${p.payment_log.length})` : ''}
-                            </button>
-                          )}
-                          {!rec.cancelled && (
-                            <button onClick={e => { e.stopPropagation(); cancelInstallmentPayment(p.contact_id, p.event_id, i); }}
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Cancelar">×</button>
-                          )}
-                        </div>
+                      {hasOtherLines && baseExpected != null && (
+                        <BaseLine label={ceremonyLabel} amount={baseExpected} />
+                      )}
+
+                      {records.map((rec, i) => (
+                        <PaymentRecordLine key={i} rec={rec} isLast={!hasTransfersOrDiscount && i === records.length - 1 && noMoreBlocksAfter}
+                          hasLog={p.payment_log?.length > 0} logCount={p.payment_log?.length || 0}
+                          onOpenLog={() => setLogModal({ name, log: p.payment_log, contactId: p.contact_id, eventId: p.event_id, isMerged: !!p._merged, mergedParticipant: p._merged ? p : null })}
+                          onCancel={() => cancelInstallmentPayment(p.contact_id, p.event_id, i)} />
                       ))}
 
                       {(() => {
@@ -1234,7 +1267,6 @@ export default function PagamentosPage() {
                           ...inTransfers.map(t => ({ ...t, _kind: 'transfer', _dir: 'in' })),
                           ...(p.discount > 0 ? [{ _kind: 'discount', id: 'discount', amount: p.discount }] : []),
                         ];
-                        const noMoreBlocksAfter = !(isParcelado || isNoLocal || (p.payment_log?.length > 0));
                         return allT.map((t, i) => {
                           const isLast = noMoreBlocksAfter && i === allT.length - 1;
                           if (t._kind === 'discount') {
@@ -1242,14 +1274,13 @@ export default function PagamentosPage() {
                           }
                           return (
                             <TransferLine key={t.id} t={t} direction={t._dir} isLast={isLast}
-                              onSetStatus={(s) => setTransferStatus(t.id, s)}
                               onCancel={() => cancelTransfer(t.id)}
                               onOpenLog={() => setLogModal({ name: t._dir === 'out' ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—'), log: t.log || [], isMerged: true })} />
                           );
                         });
                       })()}
 
-                      {isParcelado && (
+                      {showPaymentBlock && (
                         <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', background: '#fdfbf7' }}>
                           {registerInstallment?.contactId === p.contact_id && registerInstallment?.eventId === p.event_id ? (
                             <div style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
@@ -1266,7 +1297,7 @@ export default function PagamentosPage() {
                                   onChange={e => setRegisterInstallment(prev => ({ ...prev, date: e.target.value }))}
                                   style={{ padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }} />
                               </div>
-                              <button onClick={() => { if (!registerInstallment.amount || !registerInstallment.date) return; addInstallmentPayment(p.contact_id, p.event_id, registerInstallment.amount, registerInstallment.date); setRegisterInstallment(null); }}
+                              <button onClick={() => { if (!registerInstallment.amount || !registerInstallment.date) return; addInstallmentPayment(p.contact_id, p.event_id, registerInstallment.amount, registerInstallment.date, owed, inTransfers); setRegisterInstallment(null); }}
                                 style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
                               <button onClick={() => setRegisterInstallment(null)}
                                 style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>×</button>
@@ -1274,7 +1305,7 @@ export default function PagamentosPage() {
                           ) : (
                             <button onClick={e => { e.stopPropagation(); setRegisterInstallment({ contactId: p.contact_id, eventId: p.event_id, amount: '', date: '' }); }}
                               style={{ width: '100%', padding: '0.45rem 1rem', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7a68a4', textAlign: 'left' }}>
-                              + registrar parcela
+                              + registrar pagamento
                             </button>
                           )}
                         </div>
