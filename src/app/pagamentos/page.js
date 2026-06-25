@@ -689,26 +689,62 @@ export default function PagamentosPage() {
     return groups;
   }, [participants, resumoCeremonies, transfersOutMap, transfersInMap, primaryEventByContact]);
 
+  // Quem recebeu transferência ligada a uma cerimônia selecionada mas cuja cerimônia "âncora"
+  // (primaryEventByContact) não está no escopo selecionado — inclui o caso de não ser
+  // participante de NENHUMA cerimônia ativa (ex: Pedro Ivo). Sem isso, o dinheiro transferido
+  // sai do total de quem enviou e não aparece em lugar nenhum do resumo.
+  const transferRecipientGroups = useMemo(() => {
+    if (resumoCeremonies.size === 0) return [];
+    const byRecipient = {};
+    transfers.forEach(t => {
+      if (!resumoCeremonies.has(t.event_id)) return;
+      const anchorEvent = primaryEventByContact[t.to_contact_id];
+      if (anchorEvent !== undefined && resumoCeremonies.has(anchorEvent)) return; // já contado via sumIn no grupo dele
+      const key = t.to_contact_id;
+      if (!byRecipient[key]) byRecipient[key] = { contactId: key, name: t.to_contact?.nickname || t.to_contact?.name || '—', transfersList: [] };
+      byRecipient[key].transfersList.push(t);
+    });
+    return Object.values(byRecipient).map(g => {
+      const total = g.transfersList.reduce((s, t) => s + Number(t.amount), 0);
+      const paid = g.transfersList.filter(t => t.status === 'pago').reduce((s, t) => s + Number(t.amount), 0);
+      const noLocal = g.transfersList.filter(t => t.status === 'a pagar no local').reduce((s, t) => s + Number(t.amount), 0);
+      return { ...g, total, paid, noLocal, pending: total - paid - noLocal };
+    });
+  }, [transfers, resumoCeremonies, primaryEventByContact]);
+
   const resumoSummary = useMemo(() => {
     const twoDay = resumoGroups.filter(g => g.kind === '2d');
     const oneDay = resumoGroups.filter(g => g.kind === '1d');
     const discounted = resumoGroups.filter(g => g.discount > 0);
     const sumPrice = arr => arr.reduce((s, g) => s + (g.price || 0), 0);
     const totalDiscount = discounted.reduce((s, g) => s + g.discount, 0);
-    const totalReceber = sumPrice(resumoGroups) - totalDiscount;
+    const totalCobrado = sumPrice(resumoGroups) - totalDiscount;
+
     const aPagarGroups = resumoGroups.filter(g => g.effectiveStatus !== 'pago' && g.effectiveStatus !== 'a pagar no local');
     const noLocalGroups = resumoGroups.filter(g => g.effectiveStatus === 'a pagar no local');
     const pagoGroups = resumoGroups.filter(g => g.paidSoFar > 0);
+
+    const recipPending = transferRecipientGroups.filter(g => g.pending > 0).map(g => ({ name: g.name, owed: g.pending }));
+    const recipNoLocal = transferRecipientGroups.filter(g => g.noLocal > 0).map(g => ({ name: g.name, owed: g.noLocal }));
+    const recipPaid = transferRecipientGroups.filter(g => g.paid > 0).map(g => ({ name: g.name, paidSoFar: g.paid }));
+
+    const aPagarAll = [...aPagarGroups, ...recipPending];
+    const noLocalAll = [...noLocalGroups, ...recipNoLocal];
+    const pagoAll = [...pagoGroups, ...recipPaid];
+
+    const aPagar = { groups: aPagarAll, total: aPagarAll.reduce((s, g) => s + (g.owed || 0), 0) };
+    const noLocal = { groups: noLocalAll, total: noLocalAll.reduce((s, g) => s + (g.owed || 0), 0) };
+    const pago = { groups: pagoAll, total: pagoAll.reduce((s, g) => s + (g.paidSoFar || 0), 0) };
+
     return {
       twoDay: { groups: twoDay, price: twoDay[0]?.price ?? null, total: sumPrice(twoDay) },
       oneDay: { groups: oneDay, price: oneDay[0]?.price ?? null, total: sumPrice(oneDay) },
       discounted: { groups: discounted, total: totalDiscount },
-      totalReceber,
-      aPagar: { groups: aPagarGroups, total: aPagarGroups.reduce((s, g) => s + (g.owed || 0), 0) },
-      noLocal: { groups: noLocalGroups, total: noLocalGroups.reduce((s, g) => s + (g.owed || 0), 0) },
-      pago: { groups: pagoGroups, total: pagoGroups.reduce((s, g) => s + (g.paidSoFar || 0), 0) },
+      totalCobrado,
+      aPagar, noLocal, pago,
+      totalAReceber: aPagar.total + noLocal.total + pago.total,
     };
-  }, [resumoGroups]);
+  }, [resumoGroups, transferRecipientGroups]);
 
   const toggleResumoExpanded = (k) => setResumoExpanded(prev => {
     const next = new Set(prev);
@@ -1418,8 +1454,8 @@ export default function PagamentosPage() {
                     expandKey="desc" expanded={resumoExpanded} onToggle={toggleResumoExpanded} color="#8a7a58" />
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0.7rem 0', marginTop: '0.4rem', borderTop: '0.5px solid #3a3530' }}>
-                    <span style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3a3530', fontWeight: 'bold' }}>Total a receber</span>
-                    <span style={{ fontSize: '15px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontWeight: 'bold' }}>$ {resumoSummary.totalReceber.toFixed(2)}</span>
+                    <span style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3a3530', fontWeight: 'bold' }}>Total cobrado</span>
+                    <span style={{ fontSize: '15px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontWeight: 'bold' }}>$ {resumoSummary.totalCobrado.toFixed(2)}</span>
                   </div>
 
                   <div style={{ borderTop: '0.5px dashed #d0cbc2', margin: '1.1rem 0' }} />
@@ -1433,6 +1469,13 @@ export default function PagamentosPage() {
                   <ResumoMetric label="Total pago" showAmountPer="paidSoFar" color="#5d9470"
                     count={resumoSummary.pago.groups.length} total={resumoSummary.pago.total} groups={resumoSummary.pago.groups}
                     expandKey="pago" expanded={resumoExpanded} onToggle={toggleResumoExpanded} />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0.7rem 0', marginTop: '0.4rem', borderTop: '0.5px solid #3a3530' }}>
+                    <span style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3a3530', fontWeight: 'bold' }}>Total a receber</span>
+                    <span style={{ fontSize: '15px', color: resumoSummary.totalAReceber.toFixed(2) === resumoSummary.totalCobrado.toFixed(2) ? '#3a3530' : '#c4892a', fontFamily: "'Courier Prime', monospace", fontWeight: 'bold' }}>
+                      $ {resumoSummary.totalAReceber.toFixed(2)}
+                    </span>
+                  </div>
                 </>
               )}
             </div>
