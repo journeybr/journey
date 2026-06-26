@@ -110,14 +110,17 @@ function TransferLine({ t, direction, isLast, onCancel }) {
 // Marca o "pago" de uma transferência como uma linha de registro, igual a um payment_record —
 // o × aqui desfaz só essa confirmação (volta a transferência para pendente), sem cancelar a
 // transferência/dívida em si, que continua tendo seu próprio × no TransferLine acima.
-function TransferPaidLine({ t, isLast, onUndo }) {
-  const dateStr = t.payment_date ? new Date(t.payment_date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+function TransferPaidLine({ date, method, amount, isLast, onUndo }) {
+  const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
   return (
     <div style={{ background: '#eef6f0', borderLeft: '0.5px solid #bcdfc8', borderRight: '0.5px solid #bcdfc8', borderBottom: isLast ? '0.5px solid #bcdfc8' : '0.5px dashed #bcdfc8', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
         <span style={{ flex: 1, fontSize: '10px', color: '#5d9470', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-          pagamento{dateStr ? ` em ${dateStr}` : ''}{t.payment_method ? ` via ${t.payment_method}` : ''}
+          pagamento{dateStr ? ` em ${dateStr}` : ''}{method ? ` via ${method}` : ''}
         </span>
+        {amount != null && (
+          <span style={{ fontSize: '10px', color: '#5d9470', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>$ {Number(amount).toFixed(2)}</span>
+        )}
         <button onClick={e => { e.stopPropagation(); onUndo(); }} title="Desfazer pagamento"
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}>×</button>
       </div>
@@ -330,12 +333,15 @@ export default function PagamentosPage() {
   async function registerOrphanPayment(contactId, amount, date, method) {
     let remaining = parseFloat(amount);
     const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
+    // batchId marca todas as transferências resolvidas nesta MESMA confirmação — assim a tela
+    // mostra uma única linha "pagamento" pro grupo, em vez de uma por transferência.
+    const batchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const pending = transfers
       .filter(t => t.to_contact_id === contactId && t.status !== 'pago' && t.status !== 'a pagar no local')
       .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
     for (const t of pending) {
       if (remaining < Number(t.amount) - 0.005) break;
-      const updateData = { status: 'pago', payment_date: date || null, payment_method: method || null, log: [...(t.log || []), newLogEntry(`registrou pagamento de $${Number(t.amount).toFixed(2)}${method ? ` via ${method}` : ''}${dateStr ? ` em ${dateStr}` : ''}`)] };
+      const updateData = { status: 'pago', payment_date: date || null, payment_method: method || null, log: [...(t.log || []), newLogEntry(`registrou pagamento de $${Number(t.amount).toFixed(2)}${method ? ` via ${method}` : ''}${dateStr ? ` em ${dateStr}` : ''}`, null, { batchId })] };
       await supabase.from('payment_transfers').update(updateData).eq('id', t.id);
       setTransfers(prev => prev.map(x => x.id === t.id ? { ...x, ...updateData } : x));
       remaining -= Number(t.amount);
@@ -348,6 +354,10 @@ export default function PagamentosPage() {
     const updateData = { status: 'pendente', payment_date: null, payment_method: null, log: [...(t?.log || []), newLogEntry('desfez pagamento — voltou para pendente')] };
     await supabase.from('payment_transfers').update(updateData).eq('id', transferId);
     setTransfers(prev => prev.map(x => x.id === transferId ? { ...x, ...updateData } : x));
+  }
+
+  async function unmarkTransferPaidBatch(transferIds) {
+    await Promise.all(transferIds.map(unmarkTransferPaid));
   }
 
   async function cancelTransfer(transferId) {
@@ -1142,6 +1152,19 @@ export default function PagamentosPage() {
                     const list = p.transfersList;
                     const total = list.reduce((s, t) => s + Number(t.amount), 0);
                     const combinedLog = combineLogs(...list.map(t => t.log));
+                    // Várias transferências resolvidas numa MESMA confirmação (mesmo batchId no log)
+                    // mostram só uma linha "pagamento", com um × que desfaz o grupo inteiro de volta.
+                    const paidGroups = {};
+                    const paidGroupOrder = [];
+                    list.forEach(t => {
+                      if (t.status !== 'pago') return;
+                      const lastEntry = t.log?.[t.log.length - 1];
+                      const key = lastEntry?.batchId || t.id;
+                      if (!paidGroups[key]) { paidGroups[key] = { ids: [], amount: 0, date: t.payment_date, method: t.payment_method }; paidGroupOrder.push(key); }
+                      paidGroups[key].ids.push(t.id);
+                      paidGroups[key].amount += Number(t.amount);
+                    });
+                    const paidGroupsList = paidGroupOrder.map(k => paidGroups[k]);
                     return (
                       <div key={p.id} style={{ marginBottom: '10px' }}>
                         <div onClick={() => setOrphanModal({ contactId: p.contact_id, name, transfersList: list })}
@@ -1152,17 +1175,14 @@ export default function PagamentosPage() {
                           </div>
                           <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
                         </div>
-                        {list.map((t, i) => {
-                          const isLast = i === list.length - 1;
-                          const isPaid = t.status === 'pago';
-                          return (
-                            <div key={t.id}>
-                              <TransferLine t={t} direction="in" isLast={isLast && !isPaid}
-                                onCancel={() => cancelTransfer(t.id)} />
-                              {isPaid && <TransferPaidLine t={t} isLast={isLast} onUndo={() => unmarkTransferPaid(t.id)} />}
-                            </div>
-                          );
-                        })}
+                        {list.map((t, i) => (
+                          <TransferLine key={t.id} t={t} direction="in" isLast={paidGroupsList.length === 0 && i === list.length - 1}
+                            onCancel={() => cancelTransfer(t.id)} />
+                        ))}
+                        {paidGroupsList.map((g, i) => (
+                          <TransferPaidLine key={i} date={g.date} method={g.method} amount={g.amount} isLast={i === paidGroupsList.length - 1}
+                            onUndo={() => unmarkTransferPaidBatch(g.ids)} />
+                        ))}
                       </div>
                     );
                   }
