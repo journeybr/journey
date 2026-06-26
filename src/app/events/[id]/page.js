@@ -2387,16 +2387,10 @@ export default function EventDetail({ params }) {
               </div>
 
               <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Pagamentos</div>
-                {(p.payment_records || []).filter(r => !r.cancelled).length === 0 && (
-                  <div style={{ fontSize: '10px', color: '#c8c2b8', fontStyle: 'italic' }}>nenhum registro ainda.</div>
-                )}
-                {(p.payment_records || []).filter(r => !r.cancelled).map((rec, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: rec.pledge ? '#8a7a58' : '#5d8a6a', padding: '3px 0', fontFamily: "'Courier Prime', monospace" }}>
-                    <span>{rec.pledge ? 'a pagar no local' : `${rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}${rec.method ? ` · ${rec.method}` : ''}`}</span>
-                    <span>$ {Number(rec.amount).toFixed(2)}</span>
-                  </div>
-                ))}
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Saldo</div>
+                <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '20px', color: '#3a3530' }}>
+                  $ {getEffectiveStatus(p).owed != null ? Number(getEffectiveStatus(p).owed).toFixed(2) : '—'}
+                </div>
               </div>
 
               {/* Footer */}

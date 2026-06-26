@@ -124,24 +124,22 @@ function BaseLine({ label, amount }) {
 
 function PaymentRecordLine({ rec, isLast, onCancel, onConfirm }) {
   const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : null;
-  const bg = rec.cancelled ? '#f5f0f0' : (rec.pledge ? '#fbf6ec' : '#eef3ef');
-  const color = rec.cancelled ? '#c0b8b0' : (rec.pledge ? '#8a7a58' : '#5d8a6a');
+  const bg = rec.pledge ? '#fbf6ec' : '#eef3ef';
+  const color = rec.pledge ? '#8a7a58' : '#5d8a6a';
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: bg, borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: isLast ? '0.5px solid #d0cbc2' : '0.5px dashed #d0cbc2', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
-      <span style={{ flex: 1, fontSize: '10px', color, textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-        {rec.pledge ? 'a pagar no local' : `pagamento${dateStr ? ` em ${dateStr}` : ''}${rec.method ? ` via ${rec.method}` : ''}`}{rec.cancelled ? ' (cancelado)' : ''}
+      <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+        {rec.pledge ? 'a pagar no local' : `pagamento${dateStr ? ` em ${dateStr}` : ''}${rec.method ? ` via ${rec.method}` : ''}`}
       </span>
-      <span style={{ fontSize: '10px', color, textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
+      <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
         -$ {rec.amount != null ? Number(rec.amount).toFixed(2) : '—'}
       </span>
-      {!rec.cancelled && rec.pledge && onConfirm && (
+      {rec.pledge && onConfirm && (
         <button onClick={e => { e.stopPropagation(); onConfirm(); }}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '12px', padding: '0 2px', lineHeight: 1 }} title="Confirmar recebimento">✓</button>
       )}
-      {!rec.cancelled && (
-        <button onClick={e => { e.stopPropagation(); onCancel(); }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Excluir">×</button>
-      )}
+      <button onClick={e => { e.stopPropagation(); onCancel(); }}
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Excluir">×</button>
     </div>
   );
 }
@@ -1214,7 +1212,8 @@ export default function PagamentosPage() {
 
                   const baseExpected = p._baseExpected;
                   const ceremonyLabel = p._merged ? p._ceremonyLabel : (p.events?.name || 'Cerimônia');
-                  const hasOtherLines = records.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
+                  const activeRecords = records.filter(r => !r.cancelled);
+                  const hasOtherLines = activeRecords.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
                   const hasTransfersOrDiscount = (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
                   const noMoreBlocksAfter = !(p.payment_log?.length > 0);
                   const combinedLog = combineLogs(p.payment_log, ...outTransfers.map(t => t.log), ...inTransfers.map(t => t.log));
@@ -1255,10 +1254,10 @@ export default function PagamentosPage() {
                         <BaseLine label={ceremonyLabel} amount={baseExpected} />
                       )}
 
-                      {records.map((rec, i) => (
-                        <PaymentRecordLine key={i} rec={rec} isLast={!hasTransfersOrDiscount && i === records.length - 1 && noMoreBlocksAfter}
-                          onCancel={() => cancelInstallmentPayment(p.contact_id, p.event_id, i)}
-                          onConfirm={rec.pledge ? () => confirmLocalPledge(p.contact_id, p.event_id, i) : undefined} />
+                      {activeRecords.map((rec, i) => (
+                        <PaymentRecordLine key={i} rec={rec} isLast={!hasTransfersOrDiscount && i === activeRecords.length - 1 && noMoreBlocksAfter}
+                          onCancel={() => cancelInstallmentPayment(p.contact_id, p.event_id, records.indexOf(rec))}
+                          onConfirm={rec.pledge ? () => confirmLocalPledge(p.contact_id, p.event_id, records.indexOf(rec)) : undefined} />
                       ))}
 
                       {(() => {
@@ -1422,16 +1421,10 @@ export default function PagamentosPage() {
               </div>
 
               <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Pagamentos</div>
-                {(pmComputed?.payment_records || pmP.payment_records || []).filter(r => !r.cancelled).length === 0 && (
-                  <div style={{ fontSize: '10px', color: '#c8c2b8', fontStyle: 'italic' }}>nenhum registro ainda.</div>
-                )}
-                {(pmComputed?.payment_records || pmP.payment_records || []).filter(r => !r.cancelled).map((rec, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: rec.pledge ? '#8a7a58' : '#5d8a6a', padding: '3px 0', fontFamily: "'Courier Prime', monospace" }}>
-                    <span>{rec.pledge ? 'a pagar no local' : `${rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}${rec.method ? ` · ${rec.method}` : ''}`}</span>
-                    <span>$ {Number(rec.amount).toFixed(2)}</span>
-                  </div>
-                ))}
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Saldo</div>
+                <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '20px', color: '#3a3530' }}>
+                  $ {pmComputed?._owed != null ? Number(pmComputed._owed).toFixed(2) : '—'}
+                </div>
               </div>
 
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
