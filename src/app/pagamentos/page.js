@@ -48,6 +48,22 @@ function combineLogs(...lists) {
   return lists.flat().filter(Boolean).sort((a, b) => new Date(a.at) - new Date(b.at));
 }
 
+// Dias em que a pessoa está realmente inscrita (não o nome da cerimônia) — uma pessoa pareada
+// entre 2 cerimônias só tem 1 dia confirmado em cada, então o nome completo da cerimônia ("16 e
+// 17 de julho") seria enganoso.
+function getEnrolledDaysLabel(rows) {
+  const days = [];
+  rows.forEach(row => {
+    if (row.date1_confirmed && row.events?.date) days.push(row.events.date);
+    if (row.date2_confirmed && row.events?.date2) days.push(row.events.date2);
+  });
+  days.sort();
+  const fmt = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }));
+  if (fmt.length === 0) return '—';
+  if (fmt.length === 1) return fmt[0];
+  return `${fmt.slice(0, -1).join(', ')} e ${fmt[fmt.length - 1]}`;
+}
+
 const WaIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
@@ -853,7 +869,7 @@ export default function PagamentosPage() {
           ...p,
           _merged: true,
           _secondary: partner,
-          _ceremonyLabel: `${p.events?.name || '—'} + ${partner.events?.name || '—'}`,
+          _ceremonyLabel: getEnrolledDaysLabel([p, partner]),
           _expectedAmount: price2d,
           payment_log: combinedLog,
           payment_records: [...(p.payment_records || []), ...(partner.payment_records || [])],
@@ -879,7 +895,9 @@ export default function PagamentosPage() {
       const activeRecords = records.filter(r => !r.cancelled);
       const pledgeRecords = activeRecords.filter(r => r.pledge);
       const realRecords = activeRecords.filter(r => !r.pledge);
-      const outTransfers = transfersOutMap[`${p.contact_id}-${p.event_id}`] || [];
+      const outTransfers = p._merged && p._secondary
+        ? [...(transfersOutMap[`${p.contact_id}-${p.event_id}`] || []), ...(transfersOutMap[`${p._secondary.contact_id}-${p._secondary.event_id}`] || [])]
+        : (transfersOutMap[`${p.contact_id}-${p.event_id}`] || []);
       const isPrimaryRow = primaryEventByContact[p.contact_id] === p.event_id;
       const inTransfers = isPrimaryRow ? (transfersInMap[p.contact_id] || []) : [];
       const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
@@ -1213,7 +1231,7 @@ export default function PagamentosPage() {
                   }
 
                   const baseExpected = p._baseExpected;
-                  const ceremonyLabel = p._merged ? p._ceremonyLabel : (p.events?.name || 'Cerimônia');
+                  const ceremonyLabel = p._merged ? p._ceremonyLabel : getEnrolledDaysLabel([p]);
                   const activeRecords = records.filter(r => !r.cancelled);
                   const hasOtherLines = activeRecords.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
                   const hasTransfersOrDiscount = (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
@@ -1299,7 +1317,7 @@ export default function PagamentosPage() {
               <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2' }}>
                 <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Registro de pagamento</div>
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>{pmP.contacts?.nickname || pmP.contacts?.name}</div>
-                <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '2px', fontStyle: 'italic' }}>{paymentModal.merged ? paymentModal.mergedEntry._ceremonyLabel : pmP.events?.name}</div>
+                <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '2px', fontStyle: 'italic' }}>{paymentModal.merged ? paymentModal.mergedEntry._ceremonyLabel : getEnrolledDaysLabel([pmP])}</div>
               </div>
               {paymentModal.status === 'conferir pagamento' && (
                 <div style={{ padding: '1rem 1.5rem 0' }}>

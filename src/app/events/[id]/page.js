@@ -119,6 +119,19 @@ const CoinIcon = ({ status = 'em aberto' }) => {
   );
 };
 
+// Dias em que a pessoa está inscrita nesta cerimônia (não o nome da cerimônia) — alguém pareado
+// com outra cerimônia só tem 1 dia confirmado aqui, então o nome completo seria enganoso.
+function getEnrolledDaysLabel(p, event) {
+  const days = [];
+  if (p?.date1_confirmed && event?.date) days.push(event.date);
+  if (p?.date2_confirmed && event?.date2) days.push(event.date2);
+  days.sort();
+  const fmt = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }));
+  if (fmt.length === 0) return event?.name || 'Cerimônia';
+  if (fmt.length === 1) return fmt[0];
+  return `${fmt.slice(0, -1).join(', ')} e ${fmt[fmt.length - 1]}`;
+}
+
 // Linhas de memória de cálculo (somente leitura) — mesmo visual da tela de Pagamentos, mas sem
 // botões de ação aqui: gerenciar transferência/pagamento continua sendo feito nos lugares de sempre.
 function CalcBaseLine({ label, amount }) {
@@ -2516,7 +2529,7 @@ export default function EventDetail({ params }) {
                     )}
                     {hasOtherLines && showCalcMemo && (
                       <div style={{ marginTop: '0.6rem' }}>
-                        {es.baseExpected != null && <CalcBaseLine label={event?.name || 'Cerimônia'} amount={es.baseExpected} />}
+                        {es.baseExpected != null && <CalcBaseLine label={getEnrolledDaysLabel(p, event)} amount={es.baseExpected} />}
                         {allLines.map((l, i) => {
                           const isLast = i === allLines.length - 1;
                           if (l._kind === 'record') return <CalcRecordLine key={`r${i}`} rec={l.rec} isLast={isLast} />;
