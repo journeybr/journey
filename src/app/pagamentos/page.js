@@ -1123,7 +1123,7 @@ export default function PagamentosPage() {
                           style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px 2px 0 0', cursor: 'pointer' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
-                            {combinedLog.length > 0 && <HistoryIcon onClick={e => { e.stopPropagation(); setLogModal({ name, log: combinedLog, isMerged: true }); }} />}
+                            {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, isMerged: true })} />}
                           </div>
                           <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
                         </div>
