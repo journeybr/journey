@@ -1310,16 +1310,17 @@ export default function PagamentosPage() {
 
               <div style={{ padding: '1rem 1.5rem 0' }}>
                 <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Ações</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
                   {[
-                    { key: 'parcelado', label: '◑ Parcelado', active: pmP.payment_status === 'parcelado' },
-                    { key: 'local', label: '◐ A pagar no local', active: false },
-                    { key: 'payment', label: '+ Inserir pagamento', active: false },
-                    { key: 'discount', label: '% Inserir desconto', active: pmP.discount != null },
+                    { key: 'parcelado', icon: '◑', label: 'Parcelado', active: pmP.payment_status === 'parcelado' },
+                    { key: 'local', icon: '◐', label: 'A pagar no local', active: false },
+                    { key: 'payment', icon: '+', label: 'Inserir pagamento', active: false },
+                    { key: 'discount', icon: '%', label: 'Inserir desconto', active: pmP.discount != null },
                   ].map(opt => (
                     <button key={opt.key} onClick={() => setModalAction(prev => prev === opt.key ? null : opt.key)}
-                      style={{ padding: '6px 10px', background: modalAction === opt.key ? '#3a3530' : (opt.active ? '#faf7f0' : 'transparent'), border: modalAction === opt.key ? '0.5px solid #3a3530' : (opt.active ? '0.5px solid #b8b0a4' : '0.5px dashed #c8c2b8'), borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', color: modalAction === opt.key ? '#f7f4ee' : '#7a7268' }}>
-                      {opt.label}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 6px', background: modalAction === opt.key ? '#3a3530' : (opt.active ? '#faf7f0' : 'transparent'), border: modalAction === opt.key ? '0.5px solid #3a3530' : (opt.active ? '0.5px solid #b8b0a4' : '0.5px dashed #c8c2b8'), borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.02em', color: modalAction === opt.key ? '#f7f4ee' : '#7a7268', textAlign: 'center' }}>
+                      <span>{opt.icon}</span>
+                      <span>{opt.label}</span>
                     </button>
                   ))}
                 </div>
