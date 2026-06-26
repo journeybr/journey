@@ -119,6 +119,71 @@ const CoinIcon = ({ status = 'em aberto' }) => {
   );
 };
 
+// Linhas de memória de cálculo (somente leitura) — mesmo visual da tela de Pagamentos, mas sem
+// botões de ação aqui: gerenciar transferência/pagamento continua sendo feito nos lugares de sempre.
+function CalcBaseLine({ label, amount }) {
+  return (
+    <div style={{ background: '#f3f1ec', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color: '#9a9288', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', fontStyle: 'italic' }}>⛯ {label}</span>
+        <span style={{ fontSize: '10px', color: '#9a9288', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>$ {Number(amount).toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
+function CalcRecordLine({ rec, isLast }) {
+  const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : null;
+  const bg = rec.pledge ? '#fbf6ec' : '#eef3ef';
+  const color = rec.pledge ? '#8a7a58' : '#5d8a6a';
+  return (
+    <div style={{ background: bg, borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: isLast ? '0.5px solid #d0cbc2' : '0.5px dashed #d0cbc2', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+          {rec.pledge ? 'a pagar no local' : `pagamento${dateStr ? ` em ${dateStr}` : ''}${rec.method ? ` via ${rec.method}` : ''}`}
+        </span>
+        <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>-$ {Number(rec.amount).toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
+function CalcTransferLine({ t, direction, isLast }) {
+  const out = direction === 'out';
+  const otherName = out ? (t.to_contact?.nickname || t.to_contact?.name || '—') : (t.from_contact?.nickname || t.from_contact?.name || '—');
+  const color = out ? '#b07a4a' : '#5d8a6a';
+  const bg = out ? '#fbf3ea' : '#eef6f0';
+  const border = out ? '#e0c8a8' : '#bcdfc8';
+  const statusLabel = t.status === 'pago' ? 'pago' : t.status === 'a pagar no local' ? 'no local' : t.status === 'conferir pagamento' ? 'conferir' : 'pendente';
+  return (
+    <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: t.observation ? '0.4rem 1rem 1px' : '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+          {out ? '↗ transferido para' : '↙ transferido de'} {otherName} · {statusLabel}
+        </span>
+        <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>{out ? '-' : '+'}$ {Number(t.amount).toFixed(2)}</span>
+      </div>
+      {t.observation && (
+        <div style={{ padding: '0 1rem 0.4rem', fontSize: '9px', color, fontStyle: 'italic', opacity: 0.85 }}>"{t.observation}"</div>
+      )}
+    </div>
+  );
+}
+
+function CalcDiscountLine({ amount, isLast }) {
+  const color = '#a08850';
+  const bg = '#fdf6ea';
+  const border = '#e8d8b0';
+  return (
+    <div style={{ background: bg, borderLeft: `0.5px solid ${border}`, borderRight: `0.5px solid ${border}`, borderBottom: isLast ? `0.5px solid ${border}` : `0.5px dashed ${border}`, borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem' }}>
+        <span style={{ flex: 1, fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>◐ desconto</span>
+        <span style={{ fontSize: '10px', color, fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>-$ {Number(amount).toFixed(2)}</span>
+      </div>
+    </div>
+  );
+}
+
 const DocumentIcon = ({ active }) => active ? (
   <svg width="14" height="14" viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0 }}>
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="#5d9470"/>
@@ -583,6 +648,7 @@ export default function EventDetail({ params }) {
   const [dayFilter, setDayFilter] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [modalAction, setModalAction] = useState(null); // 'parcelado' | 'local' | 'payment' | 'discount' | null
+  const [showCalcMemo, setShowCalcMemo] = useState(false);
   const [paymentSummaryOpen, setPaymentSummaryOpen] = useState(false);
   const [obsModal, setObsModal] = useState(null);
   const [otherEventsMap, setOtherEventsMap] = useState({});
@@ -1128,7 +1194,7 @@ export default function EventDetail({ params }) {
       : 'pago';
 
     const owed = (owedAberto || 0) + pledgedLocal;
-    return { expectedAmount, paidSoFar, pledgedLocal, owedAberto, owed, outTransfers, inTransfers, statusBuckets, effectiveStatus };
+    return { baseExpected, expectedAmount, paidSoFar, pledgedLocal, owedAberto, owed, outTransfers, inTransfers, statusBuckets, effectiveStatus, discount: p.discount };
   }
 
   function getEnrollmentLog(contactId) {
@@ -1579,6 +1645,7 @@ export default function EventDetail({ params }) {
               style={{ ...s.paidCell, cursor: 'pointer', opacity: cellOpacity, color: col }}
               onClick={() => {
                 setModalAction(null);
+                setShowCalcMemo(false);
                 setPaymentModal({ contactId: p.contact_id, status: intent, method: 'Câmbio', installmentCount: p.installment_count || '', discountAmount: p.discount != null ? String(p.discount) : '50.00', localAmount: '', paymentAmount: owedAberto != null ? String(owedAberto) : '', paymentDate: '' });
               }}
             >
@@ -1719,6 +1786,7 @@ export default function EventDetail({ params }) {
                 <span
                   onClick={() => {
                     setModalAction(null);
+                    setShowCalcMemo(false);
                     setPaymentModal({ contactId: p.contact_id, status: intent, method: 'Câmbio', installmentCount: p.installment_count || '', discountAmount: p.discount != null ? String(p.discount) : '50.00', localAmount: '', paymentAmount: owedAberto != null ? String(owedAberto) : '', paymentDate: '' });
                   }}
                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
@@ -2409,12 +2477,42 @@ export default function EventDetail({ params }) {
                 )}
               </div>
 
-              <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Saldo</div>
-                <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '20px', color: '#3a3530' }}>
-                  $ {getEffectiveStatus(p).owed != null ? Number(getEffectiveStatus(p).owed).toFixed(2) : '—'}
-                </div>
-              </div>
+              {(() => {
+                const es = getEffectiveStatus(p);
+                const activeRecords = (p.payment_records || []).filter(r => !r.cancelled);
+                const hasOtherLines = activeRecords.length > 0 || es.outTransfers.length > 0 || es.inTransfers.length > 0 || p.discount > 0;
+                const allLines = [
+                  ...activeRecords.map(rec => ({ _kind: 'record', rec })),
+                  ...es.outTransfers.map(t => ({ _kind: 'transfer', t, direction: 'out' })),
+                  ...es.inTransfers.map(t => ({ _kind: 'transfer', t, direction: 'in' })),
+                  ...(p.discount > 0 ? [{ _kind: 'discount', amount: p.discount }] : []),
+                ];
+                return (
+                  <div style={{ padding: '1rem 1.5rem 0' }}>
+                    <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Saldo</div>
+                    <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '20px', color: '#3a3530' }}>
+                      $ {es.owed != null ? Number(es.owed).toFixed(2) : '—'}
+                    </div>
+                    {hasOtherLines && (
+                      <button onClick={() => setShowCalcMemo(prev => !prev)}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: '0.4rem', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#7a7268', textDecoration: 'underline', letterSpacing: '0.02em' }}>
+                        {showCalcMemo ? 'ocultar memória de cálculo' : 'ver memória de cálculo'}
+                      </button>
+                    )}
+                    {hasOtherLines && showCalcMemo && (
+                      <div style={{ marginTop: '0.6rem' }}>
+                        {es.baseExpected != null && <CalcBaseLine label={event?.name || 'Cerimônia'} amount={es.baseExpected} />}
+                        {allLines.map((l, i) => {
+                          const isLast = i === allLines.length - 1;
+                          if (l._kind === 'record') return <CalcRecordLine key={`r${i}`} rec={l.rec} isLast={isLast} />;
+                          if (l._kind === 'transfer') return <CalcTransferLine key={`t${i}`} t={l.t} direction={l.direction} isLast={isLast} />;
+                          return <CalcDiscountLine key={`d${i}`} amount={l.amount} isLast={isLast} />;
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Footer */}
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
@@ -2542,7 +2640,11 @@ export default function EventDetail({ params }) {
                             <div key={p.contact_id} style={{ marginBottom: '12px', border: '0.5px solid #e8b87a', borderRadius: '2px', background: '#fefaf3' }}>
                               {/* Header */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', borderBottom: '0.5px dashed #e8b87a', cursor: 'pointer' }}
-                                onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto'), method: p.payment_status === 'a pagar no local' ? 'Espécie' : 'Câmbio', installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p._owed != null ? String(p._owed) : '', paymentDate: '' })}
+                                onClick={() => {
+                                  setModalAction(null);
+                                  setShowCalcMemo(false);
+                                  setPaymentModal({ contactId: p.contact_id, status: p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto'), method: 'Câmbio', installmentCount: p.installment_count || '', discountAmount: p.discount != null ? String(p.discount) : '50.00', localAmount: '', paymentAmount: p._owedAberto != null ? String(p._owedAberto) : '', paymentDate: '' });
+                                }}
                               >
                                 <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
                                   {p.contacts?.nickname || p.contacts?.name}
@@ -2635,6 +2737,7 @@ export default function EventDetail({ params }) {
                             <div
                               onClick={() => {
                                 setModalAction(null);
+                                setShowCalcMemo(false);
                                 setPaymentModal({ contactId: p.contact_id, status: p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto'), method: 'Câmbio', installmentCount: p.installment_count || '', discountAmount: p.discount != null ? String(p.discount) : '50.00', localAmount: '', paymentAmount: p._owedAberto != null ? String(p._owedAberto) : '', paymentDate: '' });
                               }}
                               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer' }}
