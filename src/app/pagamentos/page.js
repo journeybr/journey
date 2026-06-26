@@ -48,6 +48,12 @@ function combineLogs(...lists) {
   return lists.flat().filter(Boolean).sort((a, b) => new Date(a.at) - new Date(b.at));
 }
 
+const WaIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+  </svg>
+);
+
 function HistoryIcon({ onClick }) {
   return (
     <button onClick={e => { e.stopPropagation(); onClick(); }} title="Histórico"
@@ -226,7 +232,7 @@ export default function PagamentosPage() {
     const [{ data }, { data: contactsData }, { data: transfersData }] = await Promise.all([
       supabase
         .from('event_participants')
-        .select('*, contacts(id, name, nickname, phone), events!inner(id, name, date, date2, price_1d, price_2d, active)')
+        .select('*, contacts(id, name, nickname, phone), events!inner(id, name, date, date2, price_1d, price_2d, active, payment_text)')
         .not('status', 'eq', 'desistiu'),
       supabase.from('contacts').select('id, name, nickname').order('name'),
       supabase
@@ -1362,7 +1368,39 @@ export default function PagamentosPage() {
                   </div>
                 </div>
               )}
-              <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', gap: '0.6rem', marginTop: '0.8rem' }}>
+              <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
+                {paymentModal.status !== 'pago' && (
+                  <button
+                    onClick={() => {
+                      const firstName = (pmP.contacts?.nickname || pmP.contacts?.name || '').split(' ')[0];
+                      const ph = pmP.contacts?.phone?.replace(/\D/g, '');
+                      if (!ph) { alert('Sem telefone cadastrado.'); return; }
+                      const paymentLink = `${window.location.origin}/pagamento/${paymentModal.contactId}`;
+                      const today = new Date().toISOString().split('T')[0];
+                      const days = [];
+                      participants.filter(x => x.contact_id === paymentModal.contactId).forEach(row => {
+                        if (row.date1_confirmed && row.events?.date && row.events.date >= today) days.push(row.events.date);
+                        if (row.date2_confirmed && row.events?.date2 && row.events.date2 >= today) days.push(row.events.date2);
+                      });
+                      days.sort();
+                      const fmtDays = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }));
+                      const daysStr = fmtDays.length === 0 ? '(data a confirmar)' :
+                        fmtDays.length === 1 ? `o dia ${fmtDays[0]}` :
+                        `os dias ${fmtDays.slice(0, -1).join(', ')} e ${fmtDays[fmtDays.length - 1]}`;
+                      const defaultTemplate = `[Link]\n\nOi [Nome]! Tudo bem?\n\nSua vaga está reservada para [dias_da_cerimônia].\n\nPara confirmar a vaga, vamos precisar das informações sobre pagamento, ok?\n\n*Opção 1 - Câmbio*\n\nClica aqui pra enviar uma mensagem para a Boa Viagem Câmbio pelo WhatsApp:\nhttps://wa.me/5581988664444\n\nDiga o valor em Dólar que quer enviar para Cerimônia Brasil e eles te dirão quanto custa em Real.\nManda um pix pra eles e depois nos encaminhe o comprovante através do link no final dessa mensagem!\n\n\n*Opção 2 — Pagamento em dólar no dia*\n\nVocê também pode levar o valor em cash, em dólar, no dia da cerimônia.\nSe preferir essa opção, me avise para eu deixar registrado e te lembrar no dia, através do link abaixo:\n\n[Link]`;
+                      const template = pmP.events?.payment_text || defaultTemplate;
+                      const msg = template
+                        .replace(/\[Link\]/g, paymentLink)
+                        .replace(/\[Nome\]/g, firstName)
+                        .replace(/\[dias_da_cerimônia\]/g, daysStr);
+                      window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`, '_blank');
+                    }}
+                    style={{ width: '100%', padding: '8px', background: 'transparent', color: '#5d9470', border: '0.5px solid #9dcfb4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    <WaIcon /> cobrar via whatsapp
+                  </button>
+                )}
+                <div style={{ display: 'flex', gap: '0.6rem' }}>
                 <button onClick={() => { if (!canSave) return; const opts = { installmentCount: paymentModal.installmentCount, discount: discountVal, applyDiscount: paymentModal.applyDiscount, paymentAmount: paymentModal.paymentAmount, paymentDate: paymentModal.paymentDate }; if (paymentModal.merged && paymentModal.mergedEntry) { updatePaymentMerged(paymentModal.mergedEntry, paymentModal.status, paymentModal.method, opts); } else { updatePayment(paymentModal.contactId, paymentModal.eventId, paymentModal.status, paymentModal.method, opts); } setPaymentModal(null); }}
                   disabled={!canSave}
                   style={{ flex: 1, padding: '8px', background: canSave ? '#3a3530' : '#d0cbc2', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: canSave ? 'pointer' : 'not-allowed', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -1372,6 +1410,7 @@ export default function PagamentosPage() {
                   style={{ padding: '8px 14px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
                   cancelar
                 </button>
+                </div>
               </div>
             </div>
           </div>
