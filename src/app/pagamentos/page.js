@@ -122,19 +122,25 @@ function BaseLine({ label, amount }) {
   );
 }
 
-function PaymentRecordLine({ rec, isLast, onCancel }) {
+function PaymentRecordLine({ rec, isLast, onCancel, onConfirm }) {
   const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : null;
+  const bg = rec.cancelled ? '#f5f0f0' : (rec.pledge ? '#fbf6ec' : '#eef3ef');
+  const color = rec.cancelled ? '#c0b8b0' : (rec.pledge ? '#8a7a58' : '#5d8a6a');
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#eef3ef', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: isLast ? '0.5px solid #d0cbc2' : '0.5px dashed #d0cbc2', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
-      <span style={{ flex: 1, fontSize: '10px', color: rec.cancelled ? '#c0b8b0' : '#5d8a6a', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
-        pagamento{dateStr ? ` em ${dateStr}` : ''}{rec.method ? ` via ${rec.method}` : ''}{rec.cancelled ? ' (cancelado)' : ''}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: bg, borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: isLast ? '0.5px solid #d0cbc2' : '0.5px dashed #d0cbc2', borderRadius: isLast ? '0 0 2px 2px' : 0 }}>
+      <span style={{ flex: 1, fontSize: '10px', color, textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em' }}>
+        {rec.pledge ? 'a pagar no local' : `pagamento${dateStr ? ` em ${dateStr}` : ''}${rec.method ? ` via ${rec.method}` : ''}`}{rec.cancelled ? ' (cancelado)' : ''}
       </span>
-      <span style={{ fontSize: '10px', color: rec.cancelled ? '#c0b8b0' : '#5d8a6a', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
+      <span style={{ fontSize: '10px', color, textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace", flexShrink: 0 }}>
         -$ {rec.amount != null ? Number(rec.amount).toFixed(2) : '—'}
       </span>
+      {!rec.cancelled && rec.pledge && onConfirm && (
+        <button onClick={e => { e.stopPropagation(); onConfirm(); }}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#5d9470', fontSize: '12px', padding: '0 2px', lineHeight: 1 }} title="Confirmar recebimento">✓</button>
+      )}
       {!rec.cancelled && (
         <button onClick={e => { e.stopPropagation(); onCancel(); }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Excluir pagamento">×</button>
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }} title="Excluir">×</button>
       )}
     </div>
   );
@@ -189,6 +195,7 @@ export default function PagamentosPage() {
 
   // Payment management modals
   const [paymentModal, setPaymentModal] = useState(null);
+  const [modalAction, setModalAction] = useState(null); // 'parcelado' | 'local' | 'payment' | 'discount' | null
   const [obsModal, setObsModal] = useState(null);
   const [logModal, setLogModal] = useState(null);
   const [confirmPartialModal, setConfirmPartialModal] = useState(null);
@@ -342,46 +349,64 @@ export default function PagamentosPage() {
   }
 
   // ── Payment actions ───────────────────────────────────────────────────────
-  async function updatePayment(contactId, eventId, paymentStatus, options = {}) {
-    const { installmentCount, discount, applyDiscount } = options;
+  // "Parcelado" é a única intenção que ainda precisa ser marcada manualmente — "pago", "a pagar
+  // no local" e "em aberto" são todos derivados do saldo/registros (ver entriesComputed).
+  async function setParceladoRow(contactId, eventId, count) {
     const currentP = getParticipant(contactId, eventId);
-    const prevState = currentP ? {
-      status: currentP.payment_status || 'em aberto',
-      method: currentP.payment_method || null,
-      records: currentP.payment_records || [],
-      installment_count: currentP.installment_count || null,
-      discount: currentP.discount ?? null,
-    } : null;
-
-    // "Pago" não é mais escolhido aqui — é derivado do saldo (ver effectiveStatus). Este status
-    // guarda só a intenção: parcelado, a pagar no local, ou em aberto. Os pagamentos em si (e o
-    // histórico deles) ficam intactos independente de qual dessas intenções está marcada.
-    const updateData = { payment_status: paymentStatus };
-    const statusChanged = paymentStatus !== (prevState?.status || 'em aberto');
-    let logMsg = '';
-    if (paymentStatus === 'parcelado') {
-      updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
-      if (statusChanged) logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
-    } else if (paymentStatus === 'em aberto') {
-      updateData.installment_count = null;
-      if (statusChanged) logMsg = 'reverteu para Em Aberto';
-    } else if (paymentStatus === 'a pagar no local') {
-      updateData.installment_count = null;
-      if (statusChanged) logMsg = 'registrou A Pagar no Local';
-    } else if (statusChanged) {
-      logMsg = `alterou status para ${paymentStatus}`;
-    }
-    const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
-    updateData.discount = discountVal;
-    if (discountVal !== (prevState?.discount ?? null)) {
-      const discountMsg = discountVal != null ? `definiu desconto de $${discountVal.toFixed(2)}` : 'removeu desconto';
-      logMsg = logMsg ? `${logMsg} · ${discountMsg}` : discountMsg;
-    }
-    if (!logMsg) logMsg = 'atualizou pagamento';
-    updateData.payment_log = [...getLog(contactId, eventId), newLogEntry(logMsg, prevState)];
-
+    const prevState = currentP ? { status: currentP.payment_status || 'em aberto', method: currentP.payment_method || null, records: currentP.payment_records || [], installment_count: currentP.installment_count || null, discount: currentP.discount ?? null } : null;
+    const updateData = { payment_status: 'parcelado', installment_count: count ? parseInt(count) : null, payment_log: [...getLog(contactId, eventId), newLogEntry(`definiu parcelamento em ${count || '?'}x`, prevState)] };
     const { error } = await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
     if (!error) updateLocal(contactId, eventId, updateData);
+  }
+  async function setParcelado(p, count) {
+    if (p._merged && p._secondary) await Promise.all([setParceladoRow(p.contact_id, p.event_id, count), setParceladoRow(p._secondary.contact_id, p._secondary.event_id, count)]);
+    else await setParceladoRow(p.contact_id, p.event_id, count);
+  }
+  async function clearParceladoRow(contactId, eventId) {
+    const currentP = getParticipant(contactId, eventId);
+    if (currentP?.payment_status !== 'parcelado') return;
+    const prevState = { status: currentP.payment_status || 'em aberto', method: currentP.payment_method || null, records: currentP.payment_records || [], installment_count: currentP.installment_count || null, discount: currentP.discount ?? null };
+    const updateData = { payment_status: 'em aberto', installment_count: null, payment_log: [...getLog(contactId, eventId), newLogEntry('removeu parcelamento', prevState)] };
+    const { error } = await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    if (!error) updateLocal(contactId, eventId, updateData);
+  }
+  async function clearParcelado(p) {
+    if (p._merged && p._secondary) await Promise.all([clearParceladoRow(p.contact_id, p.event_id), clearParceladoRow(p._secondary.contact_id, p._secondary.event_id)]);
+    else await clearParceladoRow(p.contact_id, p.event_id);
+  }
+
+  async function applyDiscountRow(contactId, eventId, amount) {
+    const currentP = getParticipant(contactId, eventId);
+    const prevState = currentP ? { status: currentP.payment_status || 'em aberto', method: currentP.payment_method || null, records: currentP.payment_records || [], installment_count: currentP.installment_count || null, discount: currentP.discount ?? null } : null;
+    const val = parseFloat(amount);
+    const updateData = { discount: val, payment_log: [...getLog(contactId, eventId), newLogEntry(`definiu desconto de $${val.toFixed(2)}`, prevState)] };
+    const { error } = await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    if (!error) updateLocal(contactId, eventId, updateData);
+  }
+  async function applyDiscount(p, amount) {
+    if (p._merged && p._secondary) await Promise.all([applyDiscountRow(p.contact_id, p.event_id, amount), applyDiscountRow(p._secondary.contact_id, p._secondary.event_id, amount)]);
+    else await applyDiscountRow(p.contact_id, p.event_id, amount);
+  }
+
+  async function addLocalPledge(contactId, eventId, amount) {
+    const p = getParticipant(contactId, eventId);
+    const existing = p?.payment_records || [];
+    const newRecords = [...existing, { amount: parseFloat(amount), date: null, method: null, pledge: 'local', cancelled: false }];
+    const updateData = { payment_records: newRecords, payment_log: [...getLog(contactId, eventId), newLogEntry(`registrou $${Number(amount).toFixed(2)} a pagar no local`)] };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    updateLocal(contactId, eventId, updateData);
+  }
+
+  async function confirmLocalPledge(contactId, eventId, index) {
+    const p = getParticipant(contactId, eventId);
+    const existing = p?.payment_records || [];
+    const rec = existing[index];
+    if (!rec) return;
+    const today = new Date().toISOString().split('T')[0];
+    const newRecords = existing.map((r, i) => i === index ? { ...r, pledge: false, date: today, method: 'Espécie' } : r);
+    const updateData = { payment_records: newRecords, payment_log: [...getLog(contactId, eventId), newLogEntry(`confirmou recebimento de $${Number(rec.amount).toFixed(2)} no local`)] };
+    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
+    updateLocal(contactId, eventId, updateData);
   }
 
   function prevToLabel(prev) {
@@ -438,22 +463,6 @@ export default function PagamentosPage() {
     updateLocal(contactId, eventId, updateData);
   }
 
-  async function confirmNoLocal(contactId, eventId) {
-    const today = new Date().toISOString().split('T')[0];
-    const p = getParticipant(contactId, eventId);
-    const prevState = p ? { status: p.payment_status || 'a pagar no local', method: p.payment_method || null, records: p.payment_records || [], installment_count: p.installment_count || null, discount: p.discount ?? null } : null;
-    const expected = computeExpected(p, participants);
-    const updateData = {
-      payment_status: 'pago',
-      payment_method: 'No Local',
-      payment_records: [{ amount: expected, date: today, cancelled: false }],
-      installment_count: null,
-      payment_log: [...getLog(contactId, eventId), newLogEntry('confirmou recebimento no local', prevState, { type: 'confirmado_local' })],
-    };
-    await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
-    updateLocal(contactId, eventId, updateData);
-  }
-
   async function cancelConferirPayment(contactId, eventId) {
     const p = getParticipant(contactId, eventId);
     const existingUrl = p?.comprovante_url;
@@ -485,9 +494,6 @@ export default function PagamentosPage() {
   // A pessoa quita o SALDO, não cada transferência recebida individualmente — por isso, quando
   // o pagamento registrado cobre o que falta (owedBefore), as transferências de entrada ainda
   // pendentes são marcadas como pagas automaticamente, sem precisar de um botão por linha.
-  // A pessoa quita o SALDO, não cada transferência recebida individualmente — por isso, quando
-  // o pagamento registrado cobre o que falta (owedBefore), as transferências de entrada ainda
-  // pendentes são marcadas como pagas automaticamente, sem precisar de um botão por linha.
   async function addPaymentRecord(contactId, eventId, amount, date, method, owedBefore = null, inTransfersToResolve = []) {
     const p = getParticipant(contactId, eventId);
     const existing = p?.payment_records || [];
@@ -509,7 +515,9 @@ export default function PagamentosPage() {
     const existing = p?.payment_records || [];
     const rec = existing[index];
     const newRecords = existing.map((r, i) => i === index ? { ...r, cancelled: true } : r);
-    const cancelMsg = `cancelou pagamento${rec?.amount != null ? ` de $${Number(rec.amount).toFixed(2)}` : ''}`;
+    const cancelMsg = rec?.pledge
+      ? `cancelou $${Number(rec?.amount).toFixed(2)} a pagar no local`
+      : `cancelou pagamento${rec?.amount != null ? ` de $${Number(rec.amount).toFixed(2)}` : ''}`;
     const updateData = { payment_records: newRecords, payment_log: [...getLog(contactId, eventId), newLogEntry(cancelMsg)] };
     await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
     updateLocal(contactId, eventId, updateData);
@@ -575,37 +583,6 @@ export default function PagamentosPage() {
     await Promise.all([doRow(p), doRow(p._secondary)]);
   }
 
-  async function updatePaymentMerged(p, paymentStatus, options = {}) {
-    const { installmentCount, discount, applyDiscount } = options;
-    const doRow = async (rowP) => {
-      const actual = getParticipant(rowP.contact_id, rowP.event_id);
-      const prevState = actual ? { status: actual.payment_status || 'em aberto', method: actual.payment_method || null, records: actual.payment_records || [], installment_count: actual.installment_count || null, discount: actual.discount ?? null } : null;
-      const updateData = { payment_status: paymentStatus };
-      const statusChanged = paymentStatus !== (prevState?.status || 'em aberto');
-      let logMsg = '';
-      if (paymentStatus === 'parcelado') {
-        updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
-        if (statusChanged) logMsg = `definiu parcelamento em ${installmentCount || '?'}x (pacote)`;
-      } else if (paymentStatus === 'em aberto') {
-        updateData.installment_count = null;
-        if (statusChanged) logMsg = 'reverteu para Em Aberto';
-      } else if (paymentStatus === 'a pagar no local') {
-        updateData.installment_count = null;
-        if (statusChanged) logMsg = 'registrou A Pagar no Local';
-      } else if (statusChanged) { logMsg = `alterou status para ${paymentStatus}`; }
-      const discountVal = applyDiscount && discount !== '' && discount != null ? parseFloat(discount) : null;
-      updateData.discount = discountVal;
-      if (discountVal !== (prevState?.discount ?? null)) {
-        const discountMsg = discountVal != null ? `definiu desconto de $${discountVal.toFixed(2)}` : 'removeu desconto';
-        logMsg = logMsg ? `${logMsg} · ${discountMsg}` : discountMsg;
-      }
-      if (!logMsg) logMsg = 'atualizou pagamento';
-      updateData.payment_log = [...(actual?.payment_log || []), newLogEntry(logMsg, prevState)];
-      await supabase.from('event_participants').update(updateData).match({ event_id: rowP.event_id, contact_id: rowP.contact_id });
-      updateLocal(rowP.contact_id, rowP.event_id, updateData);
-    };
-    await Promise.all([doRow(p), doRow(p._secondary)]);
-  }
 
   // ── Filter + display logic ────────────────────────────────────────────────
   const allCeremonies = useMemo(() =>
@@ -693,22 +670,31 @@ export default function PagamentosPage() {
       const anchor = rows[0];
       const name = anchor.contacts?.nickname || anchor.contacts?.name || '—';
       const discount = anchor.discount || 0;
-      const records = rows.flatMap(r => r.payment_records || []);
-      const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
+      const records = rows.flatMap(r => r.payment_records || []).filter(r => !r.cancelled);
+      const pledgeRecords = records.filter(r => r.pledge);
+      const realRecords = records.filter(r => !r.pledge);
+      const paidSoFar = realRecords.reduce((s, r) => s + (r.amount || 0), 0);
       // Só conta transferência de SAÍDA cujo event_id também esteja no escopo selecionado —
       // mesma regra usada do lado de quem recebe, pra nunca contar só uma ponta do par.
       const outTransfers = rows.flatMap(r => transfersOutMap[`${r.contact_id}-${r.event_id}`] || []).filter(t => resumoCeremonies.has(t.event_id));
       const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
       const expectedAmount = price != null ? price - sumOut : price;
-      const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - discount) : null;
+      const total = expectedAmount != null ? expectedAmount - discount : null;
+      let pledgedLocal = pledgeRecords.reduce((s, r) => s + (r.amount || 0), 0);
+      if (pledgeRecords.length === 0 && anchor.payment_status === 'a pagar no local' && total != null) {
+        pledgedLocal = Math.max(0, total - paidSoFar);
+      }
+      const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
+      const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
+      const isPagoPortion = paidSoFar > 0 && owedAberto != null && owedAberto <= 0;
       let effectiveStatus = anchor.payment_status || 'em aberto';
-      if (owed != null && owed <= 0) {
+      if (isPagoPortion) {
         if (outTransfers.length === 0) effectiveStatus = 'pago';
         else if (outTransfers.every(t => t.status === 'pago')) effectiveStatus = 'pago';
         else if (outTransfers.some(t => t.status === 'a pagar no local')) effectiveStatus = 'a pagar no local';
         else effectiveStatus = 'transferido';
       }
-      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, owed, effectiveStatus });
+      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus });
     }
     return groups;
   }, [participants, resumoCeremonies, transfersOutMap]);
@@ -743,8 +729,8 @@ export default function PagamentosPage() {
     const totalDiscount = discounted.reduce((s, g) => s + g.discount, 0);
     const totalCobrado = sumPrice(resumoGroups) - totalDiscount;
 
-    const aPagarGroups = resumoGroups.filter(g => g.effectiveStatus !== 'pago' && g.effectiveStatus !== 'a pagar no local');
-    const noLocalGroups = resumoGroups.filter(g => g.effectiveStatus === 'a pagar no local');
+    const aPagarGroups = resumoGroups.filter(g => g.owedAberto > 0);
+    const noLocalGroups = resumoGroups.filter(g => g.pledgedLocal > 0).map(g => ({ ...g, owed: g.pledgedLocal }));
     const pagoGroups = resumoGroups.filter(g => g.paidSoFar > 0);
 
     const recipPending = transferIncomingEntries.filter(g => g.pending > 0).map(g => ({ name: g.name, owed: g.pending }));
@@ -887,8 +873,12 @@ export default function PagamentosPage() {
   // bucket (grupo de status) e na renderização da linha — evita recalcular tudo duas vezes.
   const entriesComputed = useMemo(() => {
     return allDisplayEntries.map(p => {
-      if (p._isTransferOnly) return { ...p, _effectiveStatus: p.payment_status };
+      if (p._isTransferOnly) return { ...p, _statusBuckets: [p.payment_status] };
+      if (p.payment_status === 'conferir pagamento') return { ...p, _statusBuckets: ['conferir pagamento'], _owedAberto: null, _pledgedLocal: 0, _paidSoFar: 0, _owed: null };
       const records = p.payment_records || [];
+      const activeRecords = records.filter(r => !r.cancelled);
+      const pledgeRecords = activeRecords.filter(r => r.pledge);
+      const realRecords = activeRecords.filter(r => !r.pledge);
       const outTransfers = transfersOutMap[`${p.contact_id}-${p.event_id}`] || [];
       const isPrimaryRow = primaryEventByContact[p.contact_id] === p.event_id;
       const inTransfers = isPrimaryRow ? (transfersInMap[p.contact_id] || []) : [];
@@ -896,28 +886,46 @@ export default function PagamentosPage() {
       const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
       const baseExpected = p._merged ? p._expectedAmount : computeExpected(p, participants);
       const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);
-      const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
-      const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - (p.discount || 0)) : null;
+      const paidSoFar = realRecords.reduce((s, r) => s + (r.amount || 0), 0);
+      const total = expectedAmount != null ? expectedAmount - (p.discount || 0) : null;
 
-      // "Pago" agora é sempre derivado do saldo, nunca escolhido manualmente: zerou o saldo
-      // (pagamentos + descontos cobrem o esperado) e não há transferência de saída pendente
-      // por resolver, fica "pago". Se zerou só porque foi transferido, mostra "transferido"
-      // até quem recebeu também quitar o saldo dele — daí sim a transferência conta como paga.
-      let effectiveStatus = p.payment_status || 'em aberto';
-      if (owed != null && owed <= 0) {
-        if (outTransfers.length === 0) effectiveStatus = 'pago';
-        else if (outTransfers.every(t => t.status === 'pago')) effectiveStatus = 'pago';
-        else if (outTransfers.some(t => t.status === 'a pagar no local')) effectiveStatus = 'a pagar no local';
-        else effectiveStatus = 'transferido';
+      let pledgedLocal = pledgeRecords.reduce((s, r) => s + (r.amount || 0), 0);
+      // Dado legado: status "a pagar no local" sem nenhum registro de pledge — trata o saldo
+      // restante todo como pledge, pra continuar funcionando sem precisar migrar dados antigos.
+      if (pledgeRecords.length === 0 && p.payment_status === 'a pagar no local' && total != null) {
+        pledgedLocal = Math.max(0, total - paidSoFar);
       }
 
-      return { ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn, _baseExpected: baseExpected, _adjExpected: expectedAmount, _owed: owed, _effectiveStatus: effectiveStatus };
+      const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
+      const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
+      const isPagoPortion = paidSoFar > 0 && owedAberto != null && owedAberto <= 0;
+
+      // Uma pessoa pode estar em mais de um "balde" ao mesmo tempo: parte paga (pago), parte
+      // prometida a pagar no local (a pagar no local), parte ainda sem destino (em aberto).
+      // "Transferido" só se aplica à parte paga, quando a transferência de saída ainda não foi
+      // resolvida do lado de quem recebeu.
+      const buckets = [];
+      if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
+      if (pledgedLocal > 0) buckets.push('a pagar no local');
+      if (isPagoPortion) {
+        if (outTransfers.length === 0 || outTransfers.every(t => t.status === 'pago')) buckets.push('pago');
+        else if (outTransfers.some(t => t.status === 'a pagar no local')) buckets.push('a pagar no local');
+        else buckets.push('transferido');
+      }
+      if (buckets.length === 0) buckets.push('em aberto');
+
+      return {
+        ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn,
+        _baseExpected: baseExpected, _adjExpected: expectedAmount, _total: total,
+        _paidSoFar: paidSoFar, _pledgedLocal: pledgedLocal, _owedAberto: owedAberto,
+        _owed: (owedAberto || 0) + pledgedLocal, _statusBuckets: [...new Set(buckets)],
+      };
     });
   }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants]);
 
   const countsByStatus = useMemo(() => {
     const c = {};
-    entriesComputed.forEach(p => { const k = p._effectiveStatus || p.payment_status || 'em aberto'; c[k] = (c[k] || 0) + 1; });
+    entriesComputed.forEach(p => { (p._statusBuckets || ['em aberto']).forEach(k => { c[k] = (c[k] || 0) + 1; }); });
     return c;
   }, [entriesComputed]);
 
@@ -940,7 +948,6 @@ export default function PagamentosPage() {
   const pmComputed = paymentModal
     ? (paymentModal.merged ? paymentModal.mergedEntry : entriesComputed.find(e => e.contact_id === paymentModal.contactId && e.event_id === paymentModal.eventId))
     : null;
-  const discountVal = paymentModal?.applyDiscount ? paymentModal.discount : '';
 
   return (
     <div style={s.page}>
@@ -1071,7 +1078,7 @@ export default function PagamentosPage() {
           </div>
         ) : (
           STATUS_GROUPS.filter(g => statusFilter.size === 0 || statusFilter.has(g.key)).map(({ key, label, icon, color }) => {
-            const group = entriesComputed.filter(p => (p._effectiveStatus || p.payment_status || 'em aberto') === key).sort(sortByName);
+            const group = entriesComputed.filter(p => (p._statusBuckets || ['em aberto']).includes(key)).sort(sortByName);
             const isConferir = key === 'conferir pagamento';
             const isNoLocal = key === 'a pagar no local';
             const isParcelado = key === 'parcelado';
@@ -1118,20 +1125,22 @@ export default function PagamentosPage() {
                   const expectedAmount = p._adjExpected;
                   const owed = p._owed;
 
-                  const openPaymentModal = () => setPaymentModal({
-                    contactId: p.contact_id,
-                    eventId: p.event_id,
-                    merged: p._merged || false,
-                    mergedEntry: p._merged ? p : null,
-                    status: p.payment_status || 'em aberto',
-                    method: p.payment_status === 'a pagar no local' ? 'Espécie' : 'Câmbio',
-                    installmentCount: p.installment_count || '',
-                    discount: p.discount != null ? String(p.discount) : '',
-                    applyDiscount: p.discount != null,
-                    paymentRecords: p.payment_records || [],
-                    paymentAmount: owed != null ? String(owed) : '',
-                    paymentDate: '',
-                  });
+                  const openPaymentModal = () => {
+                    setModalAction(null);
+                    setPaymentModal({
+                      contactId: p.contact_id,
+                      eventId: p.event_id,
+                      merged: p._merged || false,
+                      mergedEntry: p._merged ? p : null,
+                      status: p.payment_status || 'em aberto',
+                      method: 'Câmbio',
+                      installmentCount: p.installment_count || '',
+                      discountAmount: p.discount != null ? String(p.discount) : '50.00',
+                      localAmount: '',
+                      paymentAmount: p._owedAberto != null ? String(p._owedAberto) : '',
+                      paymentDate: '',
+                    });
+                  };
 
                   if (isConferir) {
                     const combinedLog = combineLogs(p.payment_log, ...outTransfers.map(t => t.log), ...inTransfers.map(t => t.log));
@@ -1207,8 +1216,9 @@ export default function PagamentosPage() {
                   const ceremonyLabel = p._merged ? p._ceremonyLabel : (p.events?.name || 'Cerimônia');
                   const hasOtherLines = records.length > 0 || (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
                   const hasTransfersOrDiscount = (outTransfers.length + inTransfers.length) > 0 || p.discount > 0;
-                  const noMoreBlocksAfter = !(isNoLocal || (p.payment_log?.length > 0));
+                  const noMoreBlocksAfter = !(p.payment_log?.length > 0);
                   const combinedLog = combineLogs(p.payment_log, ...outTransfers.map(t => t.log), ...inTransfers.map(t => t.log));
+                  const headerAmount = isPago || isTransferido ? null : (isNoLocal ? p._pledgedLocal : p._owedAberto);
 
                   return (
                     <div key={`${p.event_id}-${p.contact_id}`} style={{ marginBottom: '10px' }}>
@@ -1232,8 +1242,8 @@ export default function PagamentosPage() {
                         </div>
                         <div
                           style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px', flexShrink: 0, marginLeft: '10px' }}>
-                          {!isPago && !isTransferido && owed != null && (
-                            <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {Number(owed).toFixed(2)}</span>
+                          {headerAmount != null && (
+                            <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {Number(headerAmount).toFixed(2)}</span>
                           )}
                           {isParcelado && p.installment_count > 0 && (
                             <span style={{ fontSize: '9px', color: '#7a68a4', letterSpacing: '0.04em' }}>{records.filter(r => !r.cancelled).length}/{p.installment_count} parcelas</span>
@@ -1247,7 +1257,8 @@ export default function PagamentosPage() {
 
                       {records.map((rec, i) => (
                         <PaymentRecordLine key={i} rec={rec} isLast={!hasTransfersOrDiscount && i === records.length - 1 && noMoreBlocksAfter}
-                          onCancel={() => cancelInstallmentPayment(p.contact_id, p.event_id, i)} />
+                          onCancel={() => cancelInstallmentPayment(p.contact_id, p.event_id, i)}
+                          onConfirm={rec.pledge ? () => confirmLocalPledge(p.contact_id, p.event_id, i) : undefined} />
                       ))}
 
                       {(() => {
@@ -1268,15 +1279,6 @@ export default function PagamentosPage() {
                         });
                       })()}
 
-                      {isNoLocal && (
-                        <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.5rem 1rem' }}>
-                          <button
-                            onClick={e => { e.stopPropagation(); if (confirm(`Confirmar recebimento de ${name} no local?`)) confirmNoLocal(p.contact_id, p.event_id); }}
-                            style={{ padding: '6px 12px', background: '#5d9470', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                            ✓ Confirmar recebimento
-                          </button>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1298,104 +1300,141 @@ export default function PagamentosPage() {
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>{pmP.contacts?.nickname || pmP.contacts?.name}</div>
                 <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '2px', fontStyle: 'italic' }}>{paymentModal.merged ? paymentModal.mergedEntry._ceremonyLabel : pmP.events?.name}</div>
               </div>
-              <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Status</div>
-                {paymentModal.status === 'conferir pagamento' && (
-                  <div style={{ padding: '6px 10px', background: '#fef8f0', border: '0.5px solid #e8b87a', borderRadius: '2px', fontSize: '10px', color: '#c4892a', marginBottom: '0.4rem', letterSpacing: '0.04em' }}>
+              {paymentModal.status === 'conferir pagamento' && (
+                <div style={{ padding: '1rem 1.5rem 0' }}>
+                  <div style={{ padding: '6px 10px', background: '#fef8f0', border: '0.5px solid #e8b87a', borderRadius: '2px', fontSize: '10px', color: '#c4892a', letterSpacing: '0.04em' }}>
                     ? conferir pagamento — definido pelo viajante.
                   </div>
-                )}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  {[
-                    { val: 'em aberto', icon: '◎', color: '#b0a898' },
-                    { val: 'a pagar no local', icon: '◐', color: '#8a7a58' },
-                    { val: 'parcelado', icon: '◑', color: '#7a68a4' },
-                  ].map(opt => (
-                    <button key={opt.val} onClick={() => setPaymentModal(prev => ({ ...prev, status: opt.val, method: opt.val === 'a pagar no local' ? 'Espécie' : 'Câmbio' }))}
-                      style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: paymentModal.status === opt.val ? '#faf7f0' : 'transparent', border: paymentModal.status === opt.val ? '0.5px solid #b8b0a4' : '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: opt.color, textAlign: 'left', width: '100%' }}>
-                      <span style={{ fontSize: '14px' }}>{opt.icon}</span>
-                      {opt.val}
-                      {paymentModal.status === opt.val && <span style={{ marginLeft: 'auto', color: '#3a3530' }}>✓</span>}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ fontSize: '9px', color: '#b0a898', marginTop: '0.5rem', lineHeight: 1.5, fontStyle: 'italic' }}>
-                  "Pago" e "Transferido" são calculados automaticamente quando o saldo zera — não precisam ser marcados aqui.
-                </div>
-              </div>
-
-              <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={!!paymentModal.applyDiscount}
-                      onChange={e => setPaymentModal(prev => ({ ...prev, applyDiscount: e.target.checked, discount: e.target.checked ? (prev.discount || '50.00') : '' }))}
-                      style={{ cursor: 'pointer' }} />
-                    <span style={{ fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>Inserir desconto</span>
-                  </label>
-                  {paymentModal.applyDiscount && (
-                    <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '11px', color: '#7a7268' }}>USD</span>
-                      <input type="number" min="0" step="0.01" value={paymentModal.discount}
-                        onChange={e => setPaymentModal(prev => ({ ...prev, discount: e.target.value }))}
-                        style={{ width: '90px', padding: '5px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {paymentModal.status === 'parcelado' && (
-                <div style={{ padding: '1rem 1.5rem 0' }}>
-                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Nº de parcelas</div>
-                  <input type="number" min="2" max="99" value={paymentModal.installmentCount}
-                    onChange={e => setPaymentModal(prev => ({ ...prev, installmentCount: e.target.value }))}
-                    placeholder="Ex: 3"
-                    style={{ width: '120px', padding: '7px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
                 </div>
               )}
 
               <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Pagamentos</div>
-                {(pmComputed?.payment_records || pmP.payment_records || []).filter(r => !r.cancelled).map((rec, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#5d8a6a', padding: '3px 0', fontFamily: "'Courier Prime', monospace" }}>
-                    <span>{rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}{rec.method ? ` · ${rec.method}` : ''}</span>
-                    <span>$ {Number(rec.amount).toFixed(2)}</span>
-                  </div>
-                ))}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', margin: '0.6rem 0' }}>
-                  {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
-                    <button key={m} onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
-                      style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}>
-                      {m}
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Ações</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                  {[
+                    { key: 'parcelado', label: '◑ Parcelado', active: pmP.payment_status === 'parcelado' },
+                    { key: 'local', label: '◐ A pagar no local', active: false },
+                    { key: 'payment', label: '+ Inserir pagamento', active: false },
+                    { key: 'discount', label: '% Inserir desconto', active: pmP.discount != null },
+                  ].map(opt => (
+                    <button key={opt.key} onClick={() => setModalAction(prev => prev === opt.key ? null : opt.key)}
+                      style={{ padding: '6px 10px', background: modalAction === opt.key ? '#3a3530' : (opt.active ? '#faf7f0' : 'transparent'), border: modalAction === opt.key ? '0.5px solid #3a3530' : (opt.active ? '0.5px solid #b8b0a4' : '0.5px dashed #c8c2b8'), borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', color: modalAction === opt.key ? '#f7f4ee' : '#7a7268' }}>
+                      {opt.label}
                     </button>
                   ))}
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                  <div>
-                    <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
-                    <input type="number" min="0" step="0.01" value={paymentModal.paymentAmount}
-                      onChange={e => setPaymentModal(prev => ({ ...prev, paymentAmount: e.target.value }))}
-                      placeholder="0.00"
-                      style={{ width: '90px', padding: '6px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
-                    <input type="date" value={paymentModal.paymentDate}
-                      onChange={e => setPaymentModal(prev => ({ ...prev, paymentDate: e.target.value }))}
-                      style={{ padding: '6px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
-                  </div>
-                  <button onClick={() => {
-                    if (!paymentModal.paymentAmount || !paymentModal.paymentDate) return;
-                    addPaymentRecord(paymentModal.contactId, paymentModal.eventId, paymentModal.paymentAmount, paymentModal.paymentDate, paymentModal.method, pmComputed?._owed, pmComputed?._inTransfers || []);
-                    setPaymentModal(prev => ({ ...prev, paymentAmount: '', paymentDate: '' }));
-                  }}
-                    style={{ padding: '7px 12px', background: '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                    + inserir
-                  </button>
+                <div style={{ fontSize: '9px', color: '#b0a898', marginTop: '0.5rem', lineHeight: 1.5, fontStyle: 'italic' }}>
+                  "Em aberto", "pago" e "transferido" são calculados automaticamente pelo saldo.
                 </div>
+
+                {modalAction === 'parcelado' && (
+                  <div style={{ marginTop: '0.6rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                    <div>
+                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Nº de parcelas</div>
+                      <input type="number" min="2" max="99" value={paymentModal.installmentCount}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, installmentCount: e.target.value }))}
+                        placeholder="Ex: 3" autoFocus
+                        style={{ width: '90px', padding: '6px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
+                    </div>
+                    <button onClick={() => { if (!paymentModal.installmentCount) return; setParcelado(pmComputed || pmP, paymentModal.installmentCount); setModalAction(null); }}
+                      style={{ padding: '7px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
+                    {pmP.payment_status === 'parcelado' && (
+                      <button onClick={() => { clearParcelado(pmComputed || pmP); setModalAction(null); }}
+                        style={{ padding: '7px 10px', background: 'transparent', color: '#c0392b', border: '0.5px dashed #e8b0b0', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>remover</button>
+                    )}
+                  </div>
+                )}
+
+                {modalAction === 'local' && (
+                  <div style={{ marginTop: '0.6rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                    <div>
+                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
+                      <input type="number" min="0" step="0.01" value={paymentModal.localAmount}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, localAmount: e.target.value }))}
+                        placeholder="0.00" autoFocus
+                        style={{ width: '90px', padding: '6px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
+                    </div>
+                    <button onClick={() => {
+                      if (!paymentModal.localAmount) return;
+                      addLocalPledge(paymentModal.contactId, paymentModal.eventId, paymentModal.localAmount);
+                      setPaymentModal(prev => ({ ...prev, localAmount: '' }));
+                      setModalAction(null);
+                    }}
+                      style={{ padding: '7px 12px', background: '#8a7a58', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
+                  </div>
+                )}
+
+                {modalAction === 'payment' && (
+                  <div style={{ marginTop: '0.6rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.6rem' }}>
+                      {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
+                        <button key={m} onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
+                          style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}>
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                      <div>
+                        <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
+                        <input type="number" min="0" step="0.01" value={paymentModal.paymentAmount}
+                          onChange={e => setPaymentModal(prev => ({ ...prev, paymentAmount: e.target.value }))}
+                          placeholder="0.00" autoFocus
+                          style={{ width: '90px', padding: '6px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
+                        <input type="date" value={paymentModal.paymentDate}
+                          onChange={e => setPaymentModal(prev => ({ ...prev, paymentDate: e.target.value }))}
+                          style={{ padding: '6px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
+                      </div>
+                      <button onClick={() => {
+                        if (!paymentModal.paymentAmount || !paymentModal.paymentDate) return;
+                        addPaymentRecord(paymentModal.contactId, paymentModal.eventId, paymentModal.paymentAmount, paymentModal.paymentDate, paymentModal.method, pmComputed?._owed, pmComputed?._inTransfers || []);
+                        setPaymentModal(prev => ({ ...prev, paymentAmount: '', paymentDate: '' }));
+                        setModalAction(null);
+                      }}
+                        style={{ padding: '7px 12px', background: '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                        ok
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {modalAction === 'discount' && (
+                  <div style={{ marginTop: '0.6rem', padding: '0.7rem 0.9rem', background: '#faf7f0', border: '0.5px solid #d0cbc2', borderRadius: '2px', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                    <div>
+                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
+                      <input type="number" min="0" step="0.01" value={paymentModal.discountAmount}
+                        onChange={e => setPaymentModal(prev => ({ ...prev, discountAmount: e.target.value }))}
+                        autoFocus
+                        style={{ width: '90px', padding: '6px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
+                    </div>
+                    <button onClick={() => { if (!paymentModal.discountAmount) return; applyDiscount(pmComputed || pmP, paymentModal.discountAmount); setModalAction(null); }}
+                      style={{ padding: '7px 12px', background: '#8a7a58', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>ok</button>
+                    {pmP.discount != null && (
+                      <button onClick={() => { removeDiscount(pmComputed || pmP); setModalAction(null); }}
+                        style={{ padding: '7px 10px', background: 'transparent', color: '#c0392b', border: '0.5px dashed #e8b0b0', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>remover</button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ padding: '1rem 1.5rem 0' }}>
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Pagamentos</div>
+                {(pmComputed?.payment_records || pmP.payment_records || []).filter(r => !r.cancelled).length === 0 && (
+                  <div style={{ fontSize: '10px', color: '#c8c2b8', fontStyle: 'italic' }}>nenhum registro ainda.</div>
+                )}
+                {(pmComputed?.payment_records || pmP.payment_records || []).filter(r => !r.cancelled).map((rec, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: rec.pledge ? '#8a7a58' : '#5d8a6a', padding: '3px 0', fontFamily: "'Courier Prime', monospace" }}>
+                    <span>{rec.pledge ? 'a pagar no local' : `${rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}${rec.method ? ` · ${rec.method}` : ''}`}</span>
+                    <span>$ {Number(rec.amount).toFixed(2)}</span>
+                  </div>
+                ))}
               </div>
 
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
-                {pmComputed?._effectiveStatus !== 'pago' && (
+                {!(pmComputed?._statusBuckets?.length === 1 && pmComputed._statusBuckets[0] === 'pago') && (
                   <button
                     onClick={() => {
                       const firstName = (pmP.contacts?.nickname || pmP.contacts?.name || '').split(' ')[0];
@@ -1426,16 +1465,10 @@ export default function PagamentosPage() {
                     <WaIcon /> cobrar via whatsapp
                   </button>
                 )}
-                <div style={{ display: 'flex', gap: '0.6rem' }}>
-                <button onClick={() => { const opts = { installmentCount: paymentModal.installmentCount, discount: discountVal, applyDiscount: paymentModal.applyDiscount }; if (paymentModal.merged && paymentModal.mergedEntry) { updatePaymentMerged(paymentModal.mergedEntry, paymentModal.status, opts); } else { updatePayment(paymentModal.contactId, paymentModal.eventId, paymentModal.status, opts); } setPaymentModal(null); }}
-                  style={{ flex: 1, padding: '8px', background: '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                  salvar
-                </button>
                 <button onClick={() => setPaymentModal(null)}
-                  style={{ padding: '8px 14px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                  cancelar
+                  style={{ width: '100%', padding: '8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                  fechar
                 </button>
-                </div>
               </div>
             </div>
           </div>
