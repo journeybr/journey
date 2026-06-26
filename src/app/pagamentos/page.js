@@ -473,14 +473,16 @@ export default function PagamentosPage() {
     updateLocal(contactId, eventId, updateData);
   }
 
+  // Confirmar um comprovante parcial só registra o pagamento — não força "parcelado". A pessoa
+  // continua "em aberto" pelo saldo restante, a menos que o admin marque parcelado manualmente.
   async function confirmPartialPayment(contactId, eventId, amount) {
     const p = getParticipant(contactId, eventId);
     const prevState = p ? { status: p.payment_status || 'em aberto', method: p.payment_method || null, records: p.payment_records || [], installment_count: p.installment_count || null, discount: p.discount ?? null } : null;
     const today = new Date().toISOString().split('T')[0];
     const updateData = {
-      payment_status: 'parcelado',
-      payment_method: 'Câmbio',
-      payment_records: [{ amount: parseFloat(amount), date: today, cancelled: false }],
+      payment_status: 'em aberto',
+      payment_method: null,
+      payment_records: [...(p?.payment_records || []), { amount: parseFloat(amount), date: today, method: 'Câmbio', cancelled: false }],
       installment_count: null,
       payment_log: [...getLog(contactId, eventId), newLogEntry(`registrou pagamento parcial de $${Number(amount).toFixed(2)} via Câmbio`, prevState)],
     };
@@ -557,7 +559,7 @@ export default function PagamentosPage() {
     const doRow = async (rowP) => {
       const actual = getParticipant(rowP.contact_id, rowP.event_id);
       const prevState = actual ? { status: actual.payment_status || 'em aberto', method: actual.payment_method || null, records: actual.payment_records || [], installment_count: actual.installment_count || null, discount: actual.discount ?? null } : null;
-      const updateData = { payment_status: 'parcelado', payment_method: 'Câmbio', payment_records: [{ amount: half, date: today, cancelled: false }], installment_count: null, payment_log: [...(actual?.payment_log || []), newLogEntry(`registrou pagamento parcial de $${Number(half).toFixed(2)} via Câmbio (pacote)`, prevState)] };
+      const updateData = { payment_status: 'em aberto', payment_method: null, payment_records: [...(actual?.payment_records || []), { amount: half, date: today, method: 'Câmbio', cancelled: false }], installment_count: null, payment_log: [...(actual?.payment_log || []), newLogEntry(`registrou pagamento parcial de $${Number(half).toFixed(2)} via Câmbio (pacote)`, prevState)] };
       await supabase.from('event_participants').update(updateData).match({ event_id: rowP.event_id, contact_id: rowP.contact_id });
       updateLocal(rowP.contact_id, rowP.event_id, updateData);
     };

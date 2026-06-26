@@ -1252,11 +1252,11 @@ export default function EventDetail({ params }) {
     const p = participants.find(x => x.contact_id === contactId);
     const existing = p?.payment_records || [];
     const today = new Date().toISOString().split('T')[0];
-    const newRecords = [...existing, { amount: parseFloat(amount), date: today, cancelled: false }];
+    const newRecords = [...existing, { amount: parseFloat(amount), date: today, method: 'Câmbio', cancelled: false }];
     const newLog = [...getParticipantLog(contactId), newLogEntry(`registrou pagamento parcial de $${Number(amount).toFixed(2)} via Câmbio`)];
     const updateData = {
-      payment_status: 'parcelado',
-      payment_method: 'Câmbio',
+      payment_status: 'em aberto',
+      payment_method: null,
       payment_records: newRecords,
       payment_log: newLog,
     };
