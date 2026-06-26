@@ -1152,7 +1152,12 @@ export default function EventDetail({ params }) {
   // manualmente — o resto é tudo derivado do saldo, igual à tela de Pagamentos (mesma fonte de
   // payment_transfers), pra o saldo nunca divergir entre as duas telas.
   function getEffectiveStatus(p) {
-    const baseExpected = crossCeremonyExpected[p.contact_id] !== undefined
+    // Quando a pessoa está pareada entre 2 cerimônias (1 dia em cada), os pagamentos dela podem
+    // estar registrados na linha da OUTRA cerimônia — essa tela só vê a linha desta cerimônia, então
+    // não tem como calcular o saldo combinado certo aqui. Quem sabe a conta completa é a tela de
+    // Pagamentos (que já mescla as duas linhas), então avisa em vez de mostrar um número errado.
+    const crossCeremonyPaired = crossCeremonyExpected[p.contact_id] !== undefined;
+    const baseExpected = crossCeremonyPaired
       ? crossCeremonyExpected[p.contact_id]
       : (p.date1_confirmed && p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
     const outTransfers = transfers.filter(t => t.from_contact_id === p.contact_id && t.event_id === eventId);
@@ -1194,7 +1199,7 @@ export default function EventDetail({ params }) {
       : 'pago';
 
     const owed = (owedAberto || 0) + pledgedLocal;
-    return { baseExpected, expectedAmount, paidSoFar, pledgedLocal, owedAberto, owed, outTransfers, inTransfers, statusBuckets, effectiveStatus, discount: p.discount };
+    return { baseExpected, expectedAmount, paidSoFar, pledgedLocal, owedAberto, owed, outTransfers, inTransfers, statusBuckets, effectiveStatus, discount: p.discount, crossCeremonyPaired };
   }
 
   function getEnrollmentLog(contactId) {
@@ -2487,6 +2492,16 @@ export default function EventDetail({ params }) {
                   ...es.inTransfers.map(t => ({ _kind: 'transfer', t, direction: 'in' })),
                   ...(p.discount > 0 ? [{ _kind: 'discount', amount: p.discount }] : []),
                 ];
+                if (es.crossCeremonyPaired) {
+                  return (
+                    <div style={{ padding: '1rem 1.5rem 0' }}>
+                      <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Saldo</div>
+                      <div style={{ padding: '8px 10px', background: '#fef8f0', border: '0.5px solid #e8b87a', borderRadius: '2px', fontSize: '10px', color: '#c4892a', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.02em', lineHeight: 1.5 }}>
+                        Saldo não disponível. Essa pessoa está em 2 cerimônias, favor ir para o modal de pagamentos.
+                      </div>
+                    </div>
+                  );
+                }
                 return (
                   <div style={{ padding: '1rem 1.5rem 0' }}>
                     <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Saldo</div>
