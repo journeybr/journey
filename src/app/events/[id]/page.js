@@ -550,10 +550,11 @@ const FICHA_SECTIONS = [
   ]},
 ];
 
-function computeVagaBadge(p) {
+function computeVagaBadge(p, effectivePaymentStatus) {
   const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
   const hasRemedioOk = effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual';
-  const hasPaymentOk = p.payment_status === 'pago' || p.payment_status === 'a pagar no local';
+  const ps = effectivePaymentStatus || p.payment_status;
+  const hasPaymentOk = ps === 'pago' || ps === 'a pagar no local';
   if (p.status === 'Confirmado') return (hasRemedioOk && hasPaymentOk) ? 'Confirmado' : 'Reservado';
   return 'Pendente';
 }
@@ -581,7 +582,6 @@ export default function EventDetail({ params }) {
   const [dayFilter, setDayFilter] = useState(null);
   const [paymentModal, setPaymentModal] = useState(null);
   const [paymentSummaryOpen, setPaymentSummaryOpen] = useState(false);
-  const [registerInstallment, setRegisterInstallment] = useState(null);
   const [obsModal, setObsModal] = useState(null);
   const [otherEventsMap, setOtherEventsMap] = useState({});
   const [logModal, setLogModal] = useState(null);
@@ -1068,6 +1068,19 @@ export default function EventDetail({ params }) {
     return participants.find(p => p.contact_id === contactId)?.payment_log || [];
   }
 
+  // "Pago" é sempre derivado do saldo (pagamentos + desconto cobrindo o esperado) — nunca
+  // escolhido manualmente. payment_status guarda só a intenção: parcelado, a pagar no local,
+  // ou em aberto (mesma lógica usada na tela de Pagamentos, sem o lado de transferências).
+  function getEffectiveStatus(p) {
+    const expectedAmount = crossCeremonyExpected[p.contact_id] !== undefined
+      ? crossCeremonyExpected[p.contact_id]
+      : (p.date1_confirmed && p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+    const paidSoFar = (p.payment_records || []).filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
+    const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - (p.discount || 0)) : null;
+    const effectiveStatus = (owed != null && owed <= 0) ? 'pago' : (p.payment_status || 'em aberto');
+    return { expectedAmount, paidSoFar, owed, effectiveStatus };
+  }
+
   function getEnrollmentLog(contactId) {
     return participants.find(p => p.contact_id === contactId)?.enrollment_log || [];
   }
@@ -1090,8 +1103,8 @@ export default function EventDetail({ params }) {
     setParticipants(prev => prev.map(p => p.contact_id === contactId ? { ...p, ...updateData } : p));
   }
 
-  async function updatePayment(contactId, paymentStatus, paymentMethod, options = {}) {
-    const { installmentCount, discount, applyDiscount, paymentAmount, paymentDate } = options;
+  async function updatePayment(contactId, paymentStatus, options = {}) {
+    const { installmentCount, discount, applyDiscount } = options;
     const currentP = participants.find(p => p.contact_id === contactId);
     const prevState = currentP ? {
       status: currentP.payment_status || 'em aberto',
@@ -1100,25 +1113,21 @@ export default function EventDetail({ params }) {
       installment_count: currentP.installment_count || null,
       discount: currentP.discount ?? null,
     } : null;
-    const updateData = { payment_status: paymentStatus, payment_method: paymentMethod };
+    // "Pago" não é escolhido aqui — é derivado do saldo (getEffectiveStatus). Esse status guarda
+    // só a intenção: parcelado, a pagar no local, ou em aberto. Pagamentos já registrados não são
+    // apagados ao trocar a intenção.
+    const updateData = { payment_status: paymentStatus };
     const statusChanged = paymentStatus !== (prevState?.status || 'em aberto');
 
     let logMsg = '';
-    if (paymentStatus === 'pago') {
-      const amount = paymentAmount !== '' && paymentAmount != null ? parseFloat(paymentAmount) : null;
-      updateData.payment_records = [{ amount, date: paymentDate || null, cancelled: false }];
-      updateData.installment_count = null;
-      if (statusChanged) logMsg = `registrou pagamento via ${paymentMethod || '—'}${amount != null ? ` · $${Number(amount).toFixed(2)}` : ''}${paymentDate ? ` em ${new Date(paymentDate + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
-    } else if (paymentStatus === 'parcelado') {
+    if (paymentStatus === 'parcelado') {
       updateData.installment_count = installmentCount ? parseInt(installmentCount) : null;
       if (statusChanged) logMsg = `definiu parcelamento em ${installmentCount || '?'}x`;
     } else if (paymentStatus === 'em aberto') {
       updateData.installment_count = null;
-      updateData.payment_records = [];
       if (statusChanged) logMsg = 'reverteu para Em Aberto';
     } else if (paymentStatus === 'a pagar no local') {
       updateData.installment_count = null;
-      updateData.payment_records = [];
       if (statusChanged) logMsg = 'registrou A Pagar no Local';
     } else if (statusChanged) {
       logMsg = `alterou status para ${paymentStatus}`;
@@ -1144,12 +1153,12 @@ export default function EventDetail({ params }) {
     }
   }
 
-  async function addInstallmentPayment(contactId, amount, date) {
+  async function addInstallmentPayment(contactId, amount, date, method) {
     const participant = participants.find(p => p.contact_id === contactId);
     const existing = participant?.payment_records || [];
-    const newRecords = [...existing, { amount: parseFloat(amount), date: date || null, cancelled: false }];
+    const newRecords = [...existing, { amount: parseFloat(amount), date: date || null, method: method || null, cancelled: false }];
     const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
-    const newLog = [...getParticipantLog(contactId), newLogEntry(`registrou parcela de $${Number(amount).toFixed(2)}${dateStr ? ` em ${dateStr}` : ''}`)];
+    const newLog = [...getParticipantLog(contactId), newLogEntry(`registrou pagamento de $${Number(amount).toFixed(2)}${method ? ` via ${method}` : ''}${dateStr ? ` em ${dateStr}` : ''}`)];
     const { error } = await supabase
       .from('event_participants')
       .update({ payment_records: newRecords, payment_log: newLog })
@@ -1166,10 +1175,8 @@ export default function EventDetail({ params }) {
     const existing = participant?.payment_records || [];
     const rec = existing[index];
     const newRecords = existing.map((r, i) => i === index ? { ...r, cancelled: true } : r);
-    const allCancelled = newRecords.every(r => r.cancelled);
-    const cancelMsg = `cancelou pagamento${rec?.amount != null ? ` de $${Number(rec.amount).toFixed(2)}` : ''}${rec?.date ? ` em ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}${allCancelled ? ' — revertido para Em Aberto' : ''}`;
+    const cancelMsg = `cancelou pagamento${rec?.amount != null ? ` de $${Number(rec.amount).toFixed(2)}` : ''}${rec?.date ? ` em ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}`;
     const updateData = { payment_records: newRecords, payment_log: [...getParticipantLog(contactId), newLogEntry(cancelMsg)] };
-    if (allCancelled) updateData.payment_status = 'em aberto';
     const { error } = await supabase
       .from('event_participants')
       .update(updateData)
@@ -1371,14 +1378,14 @@ export default function EventDetail({ params }) {
 
   const activeParticipants = [...confirmados, ...intencao];
   const day1Active = activeParticipants.filter(p => p.date1_confirmed);
-  const day1ConfirmadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
-  const day1ReservadosCount = day1Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
+  const day1ConfirmadosCount = day1Active.filter(p => computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus) === 'Confirmado').length;
+  const day1ReservadosCount = day1Active.filter(p => computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus) === 'Reservado').length;
   const day1PrimeiraVez = day1Active.filter(p => p.contacts?.primeira_vez).length;
   const day1TotalCount = activeParticipants.filter(p => p.date1_confirmed).length;
   const day1Stats = { confirmados: day1ConfirmadosCount, reservados: day1ReservadosCount, total: day1TotalCount, primeiraVez: day1PrimeiraVez };
   const day2Active = activeParticipants.filter(p => p.date2_confirmed);
-  const day2ConfirmadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Confirmado').length;
-  const day2ReservadosCount = day2Active.filter(p => computeVagaBadge(p) === 'Reservado').length;
+  const day2ConfirmadosCount = day2Active.filter(p => computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus) === 'Confirmado').length;
+  const day2ReservadosCount = day2Active.filter(p => computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus) === 'Reservado').length;
   const day2PrimeiraVez = day2Active.filter(p => p.contacts?.primeira_vez).length;
   const day2TotalCount = activeParticipants.filter(p => p.date2_confirmed).length;
   const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2TotalCount, primeiraVez: day2PrimeiraVez };
@@ -1390,7 +1397,7 @@ export default function EventDetail({ params }) {
     const rowOpacity = p.status === 'desistiu' ? 0.4 : 1;
 
     const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
-    const badgeText = computeVagaBadge(p);
+    const badgeText = computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus);
 
     return (
       <div key={p.contact_id} style={{ ...s.row, opacity: rowOpacity }}>
@@ -1502,13 +1509,14 @@ export default function EventDetail({ params }) {
 
         {/* Pago */}
         {!isSimplified ? (() => {
-          const ps = p.payment_status || 'em aberto';
+          const { owed, effectiveStatus: ps } = getEffectiveStatus(p);
+          const intent = p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto');
           const col = ps === 'pago' ? '#5d9470' : ps === 'a pagar no local' ? '#8a7a58' : ps === 'parcelado' ? '#7a68a4' : ps === 'conferir pagamento' ? '#c4892a' : '#9a9288';
           const label = ps === 'pago' ? 'pago' : ps === 'a pagar no local' ? 'no local' : ps === 'parcelado' ? 'parcelado' : ps === 'conferir pagamento' ? 'conferir' : 'em aberto';
           return (
             <div
               style={{ ...s.paidCell, cursor: 'pointer', opacity: cellOpacity, color: col }}
-              onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+              onClick={() => setPaymentModal({ contactId: p.contact_id, status: intent, method: intent === 'a pagar no local' ? 'Espécie' : 'Câmbio', installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: owed != null ? String(owed) : '', paymentDate: '' })}
             >
               <CoinIcon status={ps} />
               <span style={{ lineHeight: 1 }}>{label}</span>
@@ -1609,7 +1617,7 @@ export default function EventDetail({ params }) {
     const hasRemedioAccess = p.status === 'intenção de ir' || p.status === 'Confirmado';
     const rowOpacity = p.status === 'desistiu' ? 0.4 : 1;
     const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
-    const badgeText = computeVagaBadge(p);
+    const badgeText = computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus);
     const dayBtn = (day, confirmed) => (
       <button key={day} onClick={() => toggleDayPresence(p.contact_id, day, confirmed)} style={{ ...s.dayTag, fontWeight: confirmed ? 'bold' : 'normal', color: confirmed ? '#3a3530' : '#c8c2b8', border: confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', cursor: 'pointer', background: 'transparent' }}>
         {confirmed ? `D${day}` : <s>D{day}</s>}
@@ -1641,10 +1649,11 @@ export default function EventDetail({ params }) {
               </span>
             )}
             {(() => {
-              const ps = p.payment_status || 'em aberto';
+              const { owed, effectiveStatus: ps } = getEffectiveStatus(p);
+              const intent = p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto');
               return (
                 <span
-                  onClick={() => setPaymentModal({ contactId: p.contact_id, status: ps, method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                  onClick={() => setPaymentModal({ contactId: p.contact_id, status: intent, method: intent === 'a pagar no local' ? 'Espécie' : 'Câmbio', installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: owed != null ? String(owed) : '', paymentDate: '' })}
                   style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}
                   title="Pagamento"
                 >
@@ -2197,9 +2206,6 @@ export default function EventDetail({ params }) {
       {paymentModal && (() => {
         const p = participants.find(x => x.contact_id === paymentModal.contactId);
         if (!p) return null;
-        const canSave =
-          (paymentModal.status !== 'pago' || (!!paymentModal.method && !!paymentModal.paymentDate)) &&
-          (paymentModal.status !== 'parcelado' || !!paymentModal.installmentCount);
         const discountVal = paymentModal.applyDiscount ? (paymentModal.discount !== '' ? paymentModal.discount : '50.00') : '';
         return (
           <div
@@ -2233,18 +2239,7 @@ export default function EventDetail({ params }) {
                   ].map(opt => (
                     <button
                       key={opt.val}
-                      onClick={() => {
-                        if (opt.val === 'em aberto' && p.payment_status === 'pago') {
-                          const recs = p.payment_records || [];
-                          if (recs.length > 0) {
-                            const rec = recs[0];
-                            const dateStr = rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : 'sem data';
-                            const amtStr = rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '';
-                            if (!confirm(`Tem certeza que quer excluir o pagamento de ${amtStr} na data ${dateStr}?`)) return;
-                          }
-                        }
-                        setPaymentModal(prev => ({ ...prev, status: opt.val, method: opt.val !== 'pago' ? null : prev.method }));
-                      }}
+                      onClick={() => setPaymentModal(prev => ({ ...prev, status: opt.val, method: opt.val === 'a pagar no local' ? 'Espécie' : 'Câmbio' }))}
                       style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: paymentModal.status === opt.val ? '#faf7f0' : 'transparent', border: paymentModal.status === opt.val ? '0.5px solid #b8b0a4' : '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: opt.color, textAlign: 'left', width: '100%' }}
                     >
                       <span style={{ fontSize: '14px' }}>{opt.icon}</span>
@@ -2253,66 +2248,75 @@ export default function EventDetail({ params }) {
                     </button>
                   ))}
                 </div>
+                <div style={{ fontSize: '9px', color: '#b0a898', marginTop: '0.5rem', lineHeight: 1.5, fontStyle: 'italic' }}>
+                  "Pago" é calculado automaticamente quando o saldo zera — não precisa ser marcado aqui.
+                </div>
               </div>
 
               {/* Nº de parcelas — só quando "parcelado" */}
               {paymentModal.status === 'parcelado' && (
                 <div style={{ padding: '1rem 1.5rem 0' }}>
-                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Parcelamento</div>
-                  <div style={{ maxWidth: '140px' }}>
-                    <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Nº de parcelas</div>
-                    <input
-                      type="number" min="2" max="99"
-                      value={paymentModal.installmentCount}
-                      onChange={e => setPaymentModal(prev => ({ ...prev, installmentCount: e.target.value }))}
-                      placeholder="Ex: 3"
-                      style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
-                    />
-                  </div>
-                  <div style={{ marginTop: '0.6rem', fontSize: '9px', color: '#aaa49c', fontStyle: 'italic' }}>
-                    Para registrar pagamentos, acesse a tela de pagamentos.
-                  </div>
+                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Nº de parcelas</div>
+                  <input
+                    type="number" min="2" max="99"
+                    value={paymentModal.installmentCount}
+                    onChange={e => setPaymentModal(prev => ({ ...prev, installmentCount: e.target.value }))}
+                    placeholder="Ex: 3"
+                    style={{ width: '140px', padding: '7px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
+                  />
                 </div>
               )}
 
-              {/* Forma + valor + data — só quando "pago" */}
-              {paymentModal.status === 'pago' && (
-                <div style={{ padding: '1rem 1.5rem 0' }}>
-                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Forma de pagamento</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.8rem' }}>
-                    {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
-                      <button
-                        key={m}
-                        onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
-                        style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}
-                      >
-                        {m}
-                      </button>
-                    ))}
+              {/* Pagamentos — lista + inserir, disponível pra qualquer status */}
+              <div style={{ padding: '1rem 1.5rem 0' }}>
+                <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Pagamentos</div>
+                {(p.payment_records || []).filter(r => !r.cancelled).map((rec, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: '#5d8a6a', padding: '3px 0', fontFamily: "'Courier Prime', monospace" }}>
+                    <span>{rec.date ? new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}{rec.method ? ` · ${rec.method}` : ''}</span>
+                    <span>$ {Number(rec.amount).toFixed(2)}</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
-                    <div>
-                      <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Valor (USD)</div>
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={paymentModal.paymentAmount}
-                        onChange={e => setPaymentModal(prev => ({ ...prev, paymentAmount: e.target.value }))}
-                        placeholder="0.00"
-                        style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
-                      />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Data *</div>
-                      <input
-                        type="date"
-                        value={paymentModal.paymentDate}
-                        onChange={e => setPaymentModal(prev => ({ ...prev, paymentDate: e.target.value }))}
-                        style={{ width: '100%', padding: '7px 8px', background: '#faf7f0', border: `0.5px solid ${paymentModal.paymentDate ? '#c8c2b8' : '#e8a0a0'}`, borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', boxSizing: 'border-box', outline: 'none' }}
-                      />
-                    </div>
-                  </div>
+                ))}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', margin: '0.6rem 0' }}>
+                  {['Câmbio', 'PIX', 'Wise', 'Espécie'].map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setPaymentModal(prev => ({ ...prev, method: m }))}
+                      style={{ padding: '6px 10px', background: paymentModal.method === m ? '#3a3530' : 'transparent', border: paymentModal.method === m ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', color: paymentModal.method === m ? '#f7f4ee' : '#7a7268' }}
+                    >
+                      {m}
+                    </button>
+                  ))}
                 </div>
-              )}
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                  <div>
+                    <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={paymentModal.paymentAmount}
+                      onChange={e => setPaymentModal(prev => ({ ...prev, paymentAmount: e.target.value }))}
+                      placeholder="0.00"
+                      style={{ width: '90px', padding: '6px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
+                    <input
+                      type="date"
+                      value={paymentModal.paymentDate}
+                      onChange={e => setPaymentModal(prev => ({ ...prev, paymentDate: e.target.value }))}
+                      style={{ padding: '6px 8px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}
+                    />
+                  </div>
+                  <button onClick={() => {
+                    if (!paymentModal.paymentAmount || !paymentModal.paymentDate) return;
+                    addInstallmentPayment(paymentModal.contactId, paymentModal.paymentAmount, paymentModal.paymentDate, paymentModal.method);
+                    setPaymentModal(prev => ({ ...prev, paymentAmount: '', paymentDate: '' }));
+                  }}
+                    style={{ padding: '7px 12px', background: '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    + inserir
+                  </button>
+                </div>
+              </div>
 
               {/* Desconto no valor total — independente de status/método */}
               <div style={{ padding: '1rem 1.5rem 0' }}>
@@ -2342,7 +2346,7 @@ export default function EventDetail({ params }) {
 
               {/* Footer */}
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
-                {paymentModal.status !== 'pago' && (
+                {getEffectiveStatus(p).effectiveStatus !== 'pago' && (
                   <button
                     onClick={() => {
                       const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
@@ -2371,18 +2375,14 @@ export default function EventDetail({ params }) {
                 <div style={{ display: 'flex', gap: '0.6rem' }}>
                   <button
                     onClick={() => {
-                      if (!canSave) return;
-                      updatePayment(paymentModal.contactId, paymentModal.status, paymentModal.method, {
+                      updatePayment(paymentModal.contactId, paymentModal.status, {
                         installmentCount: paymentModal.installmentCount,
                         discount: discountVal,
                         applyDiscount: paymentModal.applyDiscount,
-                        paymentAmount: paymentModal.paymentAmount,
-                        paymentDate: paymentModal.paymentDate,
                       });
                       setPaymentModal(null);
                     }}
-                    disabled={!canSave}
-                    style={{ flex: 1, padding: '8px', background: canSave ? '#3a3530' : '#d0cbc2', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: canSave ? 'pointer' : 'not-allowed', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+                    style={{ flex: 1, padding: '8px', background: '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}
                   >
                     salvar
                   </button>
@@ -2402,7 +2402,13 @@ export default function EventDetail({ params }) {
 
       {/* Tela de Resumo de Pagamentos */}
       {paymentSummaryOpen && (() => {
-        const active = participants.filter(p => p.status !== 'desistiu');
+        // "Pago" é derivado do saldo (pagamentos + desconto cobrindo o esperado), não escolhido
+        // manualmente — mesma lógica da tela de Pagamentos, só que sem o lado de transferências
+        // (essa cerimônia não rastreia transferência entre contatos, só a tela de Pagamentos).
+        const active = participants.filter(p => p.status !== 'desistiu').map(p => {
+          const { expectedAmount, paidSoFar, owed, effectiveStatus } = getEffectiveStatus(p);
+          return { ...p, _expectedAmount: expectedAmount, _paidSoFar: paidSoFar, _owed: owed, _effectiveStatus: effectiveStatus };
+        });
         const groups = [
           { key: 'em aberto', label: 'Em aberto', icon: '◎', color: '#b0a898' },
           { key: 'conferir pagamento', label: 'Conferir Pagamento', icon: '?', color: '#c4892a' },
@@ -2410,11 +2416,11 @@ export default function EventDetail({ params }) {
           { key: 'parcelado', label: 'Parcelado', icon: '◑', color: '#7a68a4' },
           { key: 'pago', label: 'Pago', icon: '◉', color: '#5d9470' },
         ];
-        const totalPago = active.filter(p => p.payment_status === 'pago').length;
-        const totalNoLocal = active.filter(p => p.payment_status === 'a pagar no local').length;
-        const totalParcelado = active.filter(p => p.payment_status === 'parcelado').length;
-        const totalConferir = active.filter(p => p.payment_status === 'conferir pagamento').length;
-        const totalAberto = active.filter(p => !p.payment_status || p.payment_status === 'em aberto').length;
+        const totalPago = active.filter(p => p._effectiveStatus === 'pago').length;
+        const totalNoLocal = active.filter(p => p._effectiveStatus === 'a pagar no local').length;
+        const totalParcelado = active.filter(p => p._effectiveStatus === 'parcelado').length;
+        const totalConferir = active.filter(p => p._effectiveStatus === 'conferir pagamento').length;
+        const totalAberto = active.filter(p => p._effectiveStatus === 'em aberto').length;
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: '#f7f4ee', overflowY: 'auto', fontFamily: "'Courier Prime', monospace" }}>
             {/* Header */}
@@ -2444,7 +2450,7 @@ export default function EventDetail({ params }) {
             {/* Grupos */}
             <div style={{ padding: '2rem', maxWidth: '560px', margin: '0 auto' }}>
               {groups.map(({ key, label, icon, color }) => {
-                const group = active.filter(p => (p.payment_status || 'em aberto') === key);
+                const group = active.filter(p => p._effectiveStatus === key);
                 return (
                   <div key={key} style={{ marginBottom: '2.2rem' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.9rem', paddingBottom: '0.5rem', borderBottom: `0.5px solid ${color}` }}>
@@ -2462,20 +2468,17 @@ export default function EventDetail({ params }) {
                         const isParcelado = key === 'parcelado';
                         const isPago = key === 'pago';
                         const isConferirGroup = key === 'conferir pagamento';
-                        const isRegistering = registerInstallment?.contactId === p.contact_id;
-                        const expectedAmount = crossCeremonyExpected[p.contact_id] !== undefined
-                          ? crossCeremonyExpected[p.contact_id]
-                          : (p.date1_confirmed && p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+                        const expectedAmount = p._expectedAmount;
                         const otherEvents = otherEventsMap[p.contact_id] || [];
-                        const paidSoFar = records.filter(r => !r.cancelled).reduce((s, r) => s + (r.amount || 0), 0);
-                        const owed = expectedAmount != null ? Math.max(0, expectedAmount - paidSoFar - (p.discount || 0)) : null;
+                        const paidSoFar = p._paidSoFar;
+                        const owed = p._owed;
 
                         if (isConferirGroup) {
                           return (
                             <div key={p.contact_id} style={{ marginBottom: '12px', border: '0.5px solid #e8b87a', borderRadius: '2px', background: '#fefaf3' }}>
                               {/* Header */}
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', borderBottom: '0.5px dashed #e8b87a', cursor: 'pointer' }}
-                                onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                                onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto'), method: p.payment_status === 'a pagar no local' ? 'Espécie' : 'Câmbio', installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p._owed != null ? String(p._owed) : '', paymentDate: '' })}
                               >
                                 <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
                                   {p.contacts?.nickname || p.contacts?.name}
@@ -2566,7 +2569,7 @@ export default function EventDetail({ params }) {
                           <div key={p.contact_id} style={{ marginBottom: '10px' }}>
                             {/* Nome + botão editar status */}
                             <div
-                              onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status || 'em aberto', method: p.payment_method || null, installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p.date1_confirmed && p.date2_confirmed && event?.price_2d ? String(event.price_2d) : event?.price_1d ? String(event.price_1d) : '', paymentDate: '' })}
+                              onClick={() => setPaymentModal({ contactId: p.contact_id, status: p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto'), method: p.payment_status === 'a pagar no local' ? 'Espécie' : 'Câmbio', installmentCount: p.installment_count || '', discount: p.discount != null ? String(p.discount) : '', applyDiscount: p.discount != null, paymentRecords: p.payment_records || [], paymentAmount: p._owed != null ? String(p._owed) : '', paymentDate: '' })}
                               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem 1rem', background: '#fdfbf7', border: '0.5px solid #d0cbc2', borderRadius: '2px', cursor: 'pointer' }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -2594,9 +2597,6 @@ export default function EventDetail({ params }) {
                                     {records.filter(r => !r.cancelled).length}/{p.installment_count} parcelas
                                   </span>
                                 )}
-                                {isPago && p.payment_method && (
-                                  <span style={{ fontSize: '9px', color: '#9a9288', letterSpacing: '0.06em' }}>via {p.payment_method}</span>
-                                )}
                                 {isPago && p.discount != null && (
                                   <span style={{ fontSize: '9px', color: '#8a7a58' }}>desc. $ {Number(p.discount).toFixed(2)}</span>
                                 )}
@@ -2604,74 +2604,23 @@ export default function EventDetail({ params }) {
                             </div>
 
                             {/* Registros individuais de pagamento */}
-                            {(isParcelado || isPago) && records.map((rec, i) => (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: rec.cancelled ? '#f5f0f0' : '#f5f0f8', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
-                                <span style={{ flex: 1, fontSize: '11px', color: rec.cancelled ? '#c0b8b0' : '#3a3530', textDecoration: rec.cancelled ? 'line-through' : 'none', fontFamily: "'Courier Prime', monospace" }}>
+                            {records.filter(r => !r.cancelled).map((rec, i) => (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0.4rem 1rem', background: '#f5f0f8', borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px dashed #d0cbc2' }}>
+                                <span style={{ flex: 1, fontSize: '11px', color: '#3a3530', fontFamily: "'Courier Prime', monospace" }}>
                                   {rec.amount != null ? `$ ${Number(rec.amount).toFixed(2)}` : '—'}
                                   {rec.date ? ` · ${new Date(rec.date + 'T12:00:00').toLocaleDateString('pt-BR')}` : ''}
-                                  {rec.cancelled ? ' (cancelado)' : ''}
+                                  {rec.method ? ` · ${rec.method}` : ''}
                                 </span>
-                                {!rec.cancelled && (isParcelado || isPago) && (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); cancelInstallmentPayment(p.contact_id, i); }}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}
-                                    title="Cancelar pagamento"
-                                  >×</button>
-                                )}
+                                <button
+                                  onClick={e => { e.stopPropagation(); cancelInstallmentPayment(p.contact_id, records.indexOf(rec)); }}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c8a8a8', fontSize: '14px', padding: '0 2px', lineHeight: 1 }}
+                                  title="Cancelar pagamento"
+                                >×</button>
                               </div>
                             ))}
-
-                            {/* Botão registrar parcela / form inline */}
-                            {isParcelado && (
-                              <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', background: '#fdfbf7' }}>
-                                {isRegistering ? (
-                                  <div style={{ padding: '0.6rem 1rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
-                                    <div>
-                                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
-                                      <input
-                                        type="number" min="0" step="0.01"
-                                        value={registerInstallment.amount}
-                                        onChange={e => setRegisterInstallment(prev => ({ ...prev, amount: e.target.value }))}
-                                        placeholder="0.00"
-                                        autoFocus
-                                        style={{ width: '80px', padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }}
-                                      />
-                                    </div>
-                                    <div>
-                                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Data</div>
-                                      <input
-                                        type="date"
-                                        value={registerInstallment.date}
-                                        onChange={e => setRegisterInstallment(prev => ({ ...prev, date: e.target.value }))}
-                                        style={{ padding: '5px 7px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', outline: 'none' }}
-                                      />
-                                    </div>
-                                    <button
-                                      onClick={() => {
-                                        if (!registerInstallment.amount || !registerInstallment.date) return;
-                                        addInstallmentPayment(p.contact_id, registerInstallment.amount, registerInstallment.date);
-                                        setRegisterInstallment(null);
-                                      }}
-                                      style={{ padding: '5px 12px', background: '#7a68a4', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', textTransform: 'uppercase' }}
-                                    >ok</button>
-                                    <button
-                                      onClick={() => setRegisterInstallment(null)}
-                                      style={{ padding: '5px 8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}
-                                    >×</button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    onClick={e => { e.stopPropagation(); setRegisterInstallment({ contactId: p.contact_id, amount: '', date: '' }); }}
-                                    style={{ width: '100%', padding: '0.45rem 1rem', background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7a68a4', textAlign: 'left' }}
-                                  >
-                                    + registrar parcela
-                                  </button>
-                                )}
-                              </div>
-                            )}
                             {/* Log footer */}
                             {(p.payment_log?.length > 0) && (
-                              <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: isParcelado ? '0' : '0 0 2px 2px', padding: '0.35rem 1rem' }}>
+                              <div style={{ borderLeft: '0.5px solid #d0cbc2', borderRight: '0.5px solid #d0cbc2', borderBottom: '0.5px solid #d0cbc2', borderRadius: '0 0 2px 2px', padding: '0.35rem 1rem' }}>
                                 <LogFooter log={p.payment_log} fmtLog={fmtLog}
                                   onOpenModal={() => {
                                     const combined = [
