@@ -103,11 +103,12 @@ const PillIcon = ({ status = 'pending', size = 22, strokeColor }) => {
 
 const CoinIcon = ({ status = 'em aberto' }) => {
   const isPago = status === 'pago';
+  const isTransferido = status === 'transferido';
   const isLocal = status === 'a pagar no local';
   const isParcelado = status === 'parcelado';
   const isConferir = status === 'conferir pagamento';
-  const isActive = isPago || isLocal || isParcelado || isConferir;
-  const bg = isPago ? '#5d9470' : isLocal ? '#8a7a58' : isParcelado ? '#7a68a4' : isConferir ? '#c4892a' : 'none';
+  const isActive = isPago || isTransferido || isLocal || isParcelado || isConferir;
+  const bg = isPago ? '#5d9470' : isTransferido ? '#6a8caa' : isLocal ? '#8a7a58' : isParcelado ? '#7a68a4' : isConferir ? '#c4892a' : 'none';
   const fg = isActive ? '#f7f4ee' : '#c8c2b8';
   const symbol = isConferir ? '?' : '$';
   return (
@@ -554,7 +555,7 @@ function computeVagaBadge(p, effectivePaymentStatus) {
   const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
   const hasRemedioOk = effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual';
   const ps = effectivePaymentStatus || p.payment_status;
-  const hasPaymentOk = ps === 'pago' || ps === 'a pagar no local';
+  const hasPaymentOk = ps === 'pago' || ps === 'a pagar no local' || ps === 'transferido';
   if (p.status === 'Confirmado') return (hasRemedioOk && hasPaymentOk) ? 'Confirmado' : 'Reservado';
   return 'Pendente';
 }
@@ -591,6 +592,7 @@ export default function EventDetail({ params }) {
   const [confirmPartialModal, setConfirmPartialModal] = useState(null);
   const [contactAllDays, setContactAllDays] = useState([]);
   const [crossCeremonyExpected, setCrossCeremonyExpected] = useState({});
+  const [transfers, setTransfers] = useState([]);
   const [contactEditModal, setContactEditModal] = useState(null);
   const [activeOtherEvents, setActiveOtherEvents] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
@@ -835,6 +837,15 @@ export default function EventDetail({ params }) {
     const { data: otherEventsData } = await supabase.from('events').select('id, name, date').eq('active', true).neq('id', eventId).order('date');
     if (otherEventsData) setActiveOtherEvents(otherEventsData);
 
+    // Transferências de dinheiro entre contatos (tabela payment_transfers) — busca global (não só
+    // dessa cerimônia), porque quem RECEBE pode estar em outra cerimônia. Mesma fonte usada na
+    // tela de Pagamentos, pra "saldo" nunca divergir entre as duas telas.
+    const { data: transfersData } = await supabase
+      .from('payment_transfers')
+      .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,active)')
+      .eq('cancelled', false);
+    setTransfers((transfersData || []).filter(t => t.events?.active !== false));
+
     setLoading(false);
   }
 
@@ -1070,13 +1081,20 @@ export default function EventDetail({ params }) {
   }
 
   // Uma pessoa pode estar em mais de um "balde" ao mesmo tempo: parte paga (pago), parte
-  // prometida a pagar no local (a pagar no local), parte ainda sem destino (em aberto).
-  // "parcelado" é a única intenção marcada manualmente — o resto é tudo derivado do saldo
-  // (mesma lógica da tela de Pagamentos, sem o lado de transferências).
+  // prometida a pagar no local (a pagar no local), parte ainda sem destino (em aberto), parte
+  // transferida para outra pessoa (transferido). "parcelado" é a única intenção marcada
+  // manualmente — o resto é tudo derivado do saldo, igual à tela de Pagamentos (mesma fonte de
+  // payment_transfers), pra o saldo nunca divergir entre as duas telas.
   function getEffectiveStatus(p) {
-    const expectedAmount = crossCeremonyExpected[p.contact_id] !== undefined
+    const baseExpected = crossCeremonyExpected[p.contact_id] !== undefined
       ? crossCeremonyExpected[p.contact_id]
       : (p.date1_confirmed && p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+    const outTransfers = transfers.filter(t => t.from_contact_id === p.contact_id && t.event_id === eventId);
+    const inTransfers = transfers.filter(t => t.to_contact_id === p.contact_id);
+    const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
+    const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
+    const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);
+
     const records = (p.payment_records || []).filter(r => !r.cancelled);
     const pledgeRecords = records.filter(r => r.pledge);
     const realRecords = records.filter(r => !r.pledge);
@@ -1095,17 +1113,22 @@ export default function EventDetail({ params }) {
     const buckets = [];
     if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
     if (pledgedLocal > 0) buckets.push('a pagar no local');
-    if (isPagoPortion) buckets.push('pago');
+    if (isPagoPortion) {
+      if (outTransfers.length === 0 || outTransfers.every(t => t.status === 'pago')) buckets.push('pago');
+      else if (outTransfers.some(t => t.status === 'a pagar no local')) buckets.push('a pagar no local');
+      else buckets.push('transferido');
+    }
     if (buckets.length === 0) buckets.push('em aberto');
     const statusBuckets = [...new Set(buckets)];
 
     const effectiveStatus = statusBuckets.includes('em aberto') ? 'em aberto'
       : statusBuckets.includes('parcelado') ? 'parcelado'
       : statusBuckets.includes('a pagar no local') ? 'a pagar no local'
+      : statusBuckets.includes('transferido') ? 'transferido'
       : 'pago';
 
     const owed = (owedAberto || 0) + pledgedLocal;
-    return { expectedAmount, paidSoFar, pledgedLocal, owedAberto, owed, statusBuckets, effectiveStatus };
+    return { expectedAmount, paidSoFar, pledgedLocal, owedAberto, owed, outTransfers, inTransfers, statusBuckets, effectiveStatus };
   }
 
   function getEnrollmentLog(contactId) {
@@ -1549,8 +1572,8 @@ export default function EventDetail({ params }) {
         {!isSimplified ? (() => {
           const { owedAberto, effectiveStatus: ps } = getEffectiveStatus(p);
           const intent = p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto');
-          const col = ps === 'pago' ? '#5d9470' : ps === 'a pagar no local' ? '#8a7a58' : ps === 'parcelado' ? '#7a68a4' : ps === 'conferir pagamento' ? '#c4892a' : '#9a9288';
-          const label = ps === 'pago' ? 'pago' : ps === 'a pagar no local' ? 'no local' : ps === 'parcelado' ? 'parcelado' : ps === 'conferir pagamento' ? 'conferir' : 'em aberto';
+          const col = ps === 'pago' ? '#5d9470' : ps === 'transferido' ? '#6a8caa' : ps === 'a pagar no local' ? '#8a7a58' : ps === 'parcelado' ? '#7a68a4' : ps === 'conferir pagamento' ? '#c4892a' : '#9a9288';
+          const label = ps === 'pago' ? 'pago' : ps === 'transferido' ? 'transferido' : ps === 'a pagar no local' ? 'no local' : ps === 'parcelado' ? 'parcelado' : ps === 'conferir pagamento' ? 'conferir' : 'em aberto';
           return (
             <div
               style={{ ...s.paidCell, cursor: 'pointer', opacity: cellOpacity, color: col }}
@@ -2395,7 +2418,7 @@ export default function EventDetail({ params }) {
 
               {/* Footer */}
               <div style={{ padding: '1rem 1.5rem 1.2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.8rem' }}>
-                {getEffectiveStatus(p).effectiveStatus !== 'pago' && (
+                {!['pago', 'transferido'].includes(getEffectiveStatus(p).effectiveStatus) && (
                   <button
                     onClick={() => {
                       const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
@@ -2436,9 +2459,9 @@ export default function EventDetail({ params }) {
 
       {/* Tela de Resumo de Pagamentos */}
       {paymentSummaryOpen && (() => {
-        // "Pago" é derivado do saldo (pagamentos + desconto cobrindo o esperado), não escolhido
-        // manualmente — mesma lógica da tela de Pagamentos, só que sem o lado de transferências
-        // (essa cerimônia não rastreia transferência entre contatos, só a tela de Pagamentos).
+        // "Pago" é derivado do saldo (pagamentos + desconto + transferências cobrindo o esperado),
+        // não escolhido manualmente — mesma lógica e mesma fonte de payment_transfers da tela de
+        // Pagamentos, pra "saldo" nunca divergir entre as duas telas.
         const active = participants.filter(p => p.status !== 'desistiu').map(p => {
           if (p.payment_status === 'conferir pagamento') return { ...p, _statusBuckets: ['conferir pagamento'], _owedAberto: null, _pledgedLocal: 0, _paidSoFar: 0, _expectedAmount: getEffectiveStatus(p).expectedAmount };
           const { expectedAmount, paidSoFar, owedAberto, pledgedLocal, statusBuckets } = getEffectiveStatus(p);
@@ -2449,9 +2472,11 @@ export default function EventDetail({ params }) {
           { key: 'conferir pagamento', label: 'Conferir Pagamento', icon: '?', color: '#c4892a' },
           { key: 'a pagar no local', label: 'A pagar no local', icon: '◐', color: '#8a7a58' },
           { key: 'parcelado', label: 'Parcelado', icon: '◑', color: '#7a68a4' },
+          { key: 'transferido', label: 'Transferido', icon: '⇄', color: '#6a8caa' },
           { key: 'pago', label: 'Pago', icon: '◉', color: '#5d9470' },
         ];
         const totalPago = active.filter(p => p._statusBuckets.includes('pago')).length;
+        const totalTransferido = active.filter(p => p._statusBuckets.includes('transferido')).length;
         const totalNoLocal = active.filter(p => p._statusBuckets.includes('a pagar no local')).length;
         const totalParcelado = active.filter(p => p._statusBuckets.includes('parcelado')).length;
         const totalConferir = active.filter(p => p._statusBuckets.includes('conferir pagamento')).length;
@@ -2467,6 +2492,8 @@ export default function EventDetail({ params }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
                 <div style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.06em' }}>
                   <span style={{ color: '#5d9470' }}>◉ {totalPago}</span>
+                  {' · '}
+                  <span style={{ color: '#6a8caa' }}>⇄ {totalTransferido}</span>
                   {' · '}
                   <span style={{ color: '#7a68a4' }}>◑ {totalParcelado}</span>
                   {' · '}
@@ -2502,6 +2529,7 @@ export default function EventDetail({ params }) {
                         const records = p.payment_records || [];
                         const isParcelado = key === 'parcelado';
                         const isPago = key === 'pago';
+                        const isTransferido = key === 'transferido';
                         const isNoLocal = key === 'a pagar no local';
                         const isConferirGroup = key === 'conferir pagamento';
                         const expectedAmount = p._expectedAmount;
@@ -2626,7 +2654,7 @@ export default function EventDetail({ params }) {
                                 )}
                               </div>
                               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
-                                {!isPago && owed != null && (
+                                {!isPago && !isTransferido && owed != null && (
                                   <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>
                                     $ {Number(owed).toFixed(2)}
                                   </span>
