@@ -226,6 +226,7 @@ export default function RegisterInterest() {
         enrollment_log: enrollLog,
       };
       if (waitlistMode) insertData.waitlist_at = new Date().toISOString();
+      else insertData.interested_at = new Date().toISOString();
       const { error: linkErr } = await supabase
         .from('event_participants')
         .insert([insertData]);

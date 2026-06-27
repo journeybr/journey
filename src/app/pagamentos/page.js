@@ -282,7 +282,8 @@ export default function PagamentosPage() {
       supabase
         .from('event_participants')
         .select('*, contacts(id, name, nickname, phone), events!inner(id, name, date, date2, price_1d, price_2d, active, payment_text)')
-        .not('status', 'eq', 'desistiu'),
+        .not('status', 'eq', 'desistiu')
+        .is('interested_at', null),
       supabase.from('contacts').select('id, name, nickname').order('name'),
       supabase
         .from('payment_transfers')

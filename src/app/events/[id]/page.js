@@ -4,6 +4,7 @@ import { useState, useEffect, Fragment, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import CeremonyFormModal from '@/components/CeremonyFormModal';
 
 const ForwardIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
@@ -663,6 +664,8 @@ export default function EventDetail({ params }) {
   const [modalAction, setModalAction] = useState(null); // 'parcelado' | 'local' | 'payment' | 'discount' | null
   const [showCalcMemo, setShowCalcMemo] = useState(false);
   const [paymentSummaryOpen, setPaymentSummaryOpen] = useState(false);
+  const [editingCeremony, setEditingCeremony] = useState(false);
+  const [editFormData, setEditFormData] = useState(null);
   const [obsModal, setObsModal] = useState(null);
   const [otherEventsMap, setOtherEventsMap] = useState({});
   const [logModal, setLogModal] = useState(null);
@@ -673,6 +676,10 @@ export default function EventDetail({ params }) {
   const [crossCeremonyExpected, setCrossCeremonyExpected] = useState({});
   const [transfers, setTransfers] = useState([]);
   const [contactEditModal, setContactEditModal] = useState(null);
+  const [savingContact, setSavingContact] = useState(false);
+  // Ref (não state) porque 2 cliques rápidos no "salvar" disparam saveContact() na mesma
+  // closure, antes do re-render que aplicaria o state — só a ref bloqueia de fato a 2ª chamada.
+  const savingContactRef = useRef(false);
   const [activeOtherEvents, setActiveOtherEvents] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
   const [diaryOpen, setDiaryOpen] = useState(false);
@@ -1407,6 +1414,18 @@ export default function EventDetail({ params }) {
   }
 
   async function saveContact() {
+    if (savingContactRef.current) return;
+    savingContactRef.current = true;
+    setSavingContact(true);
+    try {
+      await saveContactImpl();
+    } finally {
+      savingContactRef.current = false;
+      setSavingContact(false);
+    }
+  }
+
+  async function saveContactImpl() {
     const { contactId, addingToEvent, nickname, nome_completo, phone, ddi } = contactEditModal;
     const fullPhone = phone ? `${ddi || '+55'}${phone}` : '';
 
@@ -1446,8 +1465,11 @@ export default function EventDetail({ params }) {
     } else {
       // Creating a brand-new contact and adding to event
       if (fullPhone) {
+        // Busca fresca, não usa allContacts (carregado uma vez no load da página) — senão um
+        // clique duplo rápido não pega o contato que o 1º clique acabou de criar.
         const cleanNew = fullPhone.replace(/\D/g, '');
-        const dup = allContacts.find(c => c.phone?.replace(/\D/g, '') === cleanNew);
+        const { data: freshContacts } = await supabase.from('contacts').select('id, name, nickname, phone');
+        const dup = (freshContacts || []).find(c => c.phone?.replace(/\D/g, '') === cleanNew);
         if (dup) {
           alert(`Este número já está cadastrado para "${dup.nickname || dup.name}".`);
           return;
@@ -1492,6 +1514,87 @@ export default function EventDetail({ params }) {
     setParticipants(prev => prev.map(p => p.contact_id === contactId ? { ...p, waitlist_at: null } : p));
   }
 
+  async function moverParaAtivos(contactId) {
+    const { error } = await supabase
+      .from('event_participants')
+      .update({ interested_at: null })
+      .match({ event_id: eventId, contact_id: contactId });
+    if (error) { alert('Erro: ' + error.message); return; }
+    setParticipants(prev => prev.map(p => p.contact_id === contactId ? { ...p, interested_at: null } : p));
+  }
+
+  // Se a pessoa já tem o log original de "manifestou interesse" (de quando se inscreveu pelo
+  // link, antes de interested_at existir), usa essa data real em vez de "agora" — senão alguém
+  // que se inscreveu há semanas e só está sendo movido de volta agora pareceria um lead novo.
+  async function moverParaInteressados(contactId) {
+    const p = participants.find(x => x.contact_id === contactId);
+    const es = getEffectiveStatus(p);
+    const blockMsg = {
+      'pago': 'Status atual: pago. Primeiro reverta o pagamento (volte para Em Aberto) antes de mover para Interessados.',
+      'transferido': 'Status atual: transferido. Primeiro resolva a transferência de saída pendente antes de mover para Interessados.',
+      'a pagar no local': 'Status atual: a pagar no local. Primeiro cancele essa promessa de pagamento antes de mover para Interessados.',
+      'parcelado': 'Status atual: parcelado. Primeiro desmarque o parcelamento antes de mover para Interessados.',
+      'conferir pagamento': 'Status atual: conferir pagamento. Primeiro confirme ou cancele o comprovante antes de mover para Interessados.',
+    }[es.effectiveStatus];
+    if (blockMsg || es.paidSoFar > 0) {
+      let msg = blockMsg || 'Primeiro desfaça a opção de pagamento deste participante.';
+      if (es.paidSoFar > 0) msg += ' Já há pagamentos realizados. Combine sobre a devolução.';
+      alert(msg);
+      return;
+    }
+    const log = getEnrollmentLog(contactId);
+    const originalEntry = log.find(e => e.msg?.includes('manifestou interesse'));
+    const ts = originalEntry?.at || new Date().toISOString();
+    const { error } = await supabase
+      .from('event_participants')
+      .update({ interested_at: ts })
+      .match({ event_id: eventId, contact_id: contactId });
+    if (error) { alert('Erro: ' + error.message); return; }
+    setParticipants(prev => prev.map(p => p.contact_id === contactId ? { ...p, interested_at: ts } : p));
+  }
+
+  function openEditCeremony() {
+    const defaultFichaMessage = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
+    setEditFormData({
+      name: event.name || '',
+      date: event.date || '',
+      date2: event.date2 || '',
+      image_url: event.image_url || '',
+      invite_message: event.invite_message || '',
+      address: event.address || '',
+      preparation_text: event.preparation_text || '',
+      payment_text: event.payment_text || '',
+      ficha_message: event.ficha_message || defaultFichaMessage,
+      price_1d: event.price_1d != null ? String(event.price_1d) : '',
+      price_2d: event.price_2d != null ? String(event.price_2d) : '',
+    });
+    setEditingCeremony(true);
+  }
+
+  async function handleUpdateCeremony(e) {
+    e.preventDefault();
+    const dataToUpdate = {
+      ...editFormData,
+      date: editFormData.date || null,
+      date2: editFormData.date2 || null,
+      price_1d: editFormData.price_1d !== '' ? parseFloat(editFormData.price_1d) : null,
+      price_2d: editFormData.price_2d !== '' ? parseFloat(editFormData.price_2d) : null,
+    };
+    const { error } = await supabase.from('events').update(dataToUpdate).eq('id', eventId);
+    if (error) { alert('Erro ao editar cerimônia: ' + error.message); return; }
+    setEvent(prev => ({ ...prev, ...dataToUpdate }));
+    setEditingCeremony(false);
+  }
+
+  async function handleChangeCeremonyStatus(newStatus) {
+    const labels = { lista_espera: 'Lista de Espera', fechada: 'Fechada para Novas Inscrições' };
+    const label = newStatus ? labels[newStatus] : 'Aberta';
+    if (!confirm(`Mudar o status desta cerimônia para "${label}"?`)) return;
+    const { error } = await supabase.from('events').update({ ceremony_status: newStatus || null }).eq('id', eventId);
+    if (error) { alert('Erro: ' + error.message); return; }
+    setEvent(prev => ({ ...prev, ceremony_status: newStatus || null }));
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push('/login');
@@ -1517,8 +1620,9 @@ export default function EventDetail({ params }) {
   ];
 
   const filaEspera = participants.filter(p => p.waitlist_at && p.status !== 'desistiu');
-  const confirmados = participants.filter(p => p.status === 'Confirmado' && !p.waitlist_at);
-  const intencao = participants.filter(p => p.status === 'intenção de ir' && !p.waitlist_at);
+  const interessados = participants.filter(p => p.interested_at && !p.waitlist_at && p.status !== 'desistiu');
+  const confirmados = participants.filter(p => p.status === 'Confirmado' && !p.waitlist_at && !p.interested_at);
+  const intencao = participants.filter(p => p.status === 'intenção de ir' && !p.waitlist_at && !p.interested_at);
   const iniciais = participants.filter(p => p.status === 'desistiu');
 
   const activeParticipants = [...confirmados, ...intencao];
@@ -1638,6 +1742,26 @@ export default function EventDetail({ params }) {
           >
             ✕
           </span>
+
+          {/* Mover para Interessados */}
+          {!isSimplified && (
+            <span
+              title="Mover para Interessados"
+              onClick={() => moverParaInteressados(p.contact_id)}
+              style={{
+                cursor: 'pointer',
+                color: '#c8c2b8',
+                fontSize: '12px',
+                userSelect: 'none',
+                transition: 'color 0.2s',
+                marginLeft: '4px',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#3a3530'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#c8c2b8'; }}
+            >
+              ↑
+            </span>
+          )}
         </div>
 
         {/* Remédio */}
@@ -1792,6 +1916,9 @@ export default function EventDetail({ params }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span title={p.status === 'Confirmado' ? 'Confirmado' : 'Definir como Confirmado'} onClick={() => updateParticipantStatus(p.contact_id, p.status === 'Confirmado' ? 'intenção de ir' : 'Confirmado')} style={{ cursor: 'pointer', color: p.status === 'Confirmado' ? '#3d6b52' : '#c8c2b8', fontSize: '15px', fontWeight: p.status === 'Confirmado' ? 'bold' : 'normal', userSelect: 'none' }}>{p.status === 'Confirmado' ? '✓' : '○'}</span>
             <span onClick={() => { const ns = p.status === 'desistiu' ? 'Confirmado' : 'desistiu'; if (ns === 'desistiu' && !confirm(`Marcar ${p.contacts?.name?.split(' ')[0]} como desistente?`)) return; updateParticipantStatus(p.contact_id, ns); }} style={{ cursor: 'pointer', color: p.status === 'desistiu' ? '#c0392b' : '#c8c2b8', fontSize: '11px', userSelect: 'none' }}>✕</span>
+            {!isSimplified && (
+              <span title="Mover para Interessados" onClick={() => moverParaInteressados(p.contact_id)} style={{ cursor: 'pointer', color: '#c8c2b8', fontSize: '12px', userSelect: 'none' }}>↑</span>
+            )}
             {!isSimplified && hasRemedioAccess && (
               <span onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
@@ -1871,10 +1998,37 @@ export default function EventDetail({ params }) {
       </nav>
 
       <div style={{ ...s.content, padding: isMobile ? '1.2rem 1rem 3rem' : '2rem 2.5rem 4rem' }}>
-        {/* Botão de voltar */}
-        <button onClick={() => router.push('/events')} style={s.back}>
-          ← voltar às cerimônias
-        </button>
+        {/* Botão de voltar + ações da cerimônia */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.4rem', flexWrap: 'wrap', gap: '0.7rem' }}>
+          <button onClick={() => router.push('/events')} style={{ ...s.back, marginBottom: 0 }}>
+            ← voltar às cerimônias
+          </button>
+          {!isMobile && (
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <span
+                title="Editar cerimônia"
+                onClick={openEditCeremony}
+                style={{ cursor: 'pointer', fontSize: '13px', color: '#8a7a58' }}
+              >
+                ✎
+              </span>
+              <span
+                title={event.ceremony_status === 'lista_espera' ? 'Remover Lista de Espera' : 'Colocar em Lista de Espera'}
+                onClick={() => handleChangeCeremonyStatus(event.ceremony_status === 'lista_espera' ? null : 'lista_espera')}
+                style={{ cursor: 'pointer', fontSize: '13px', color: event.ceremony_status === 'lista_espera' ? '#c8a830' : '#aaa49c' }}
+              >
+                ⏳
+              </span>
+              <span
+                title={event.ceremony_status === 'fechada' ? 'Reabrir para Inscrições' : 'Fechar para Novas Inscrições'}
+                onClick={() => handleChangeCeremonyStatus(event.ceremony_status === 'fechada' ? null : 'fechada')}
+                style={{ cursor: 'pointer', fontSize: '13px', color: event.ceremony_status === 'fechada' ? '#8B0000' : '#aaa49c' }}
+              >
+                ⊘
+              </span>
+            </div>
+          )}
+        </div>
 
         {/* Cabeçalho principal */}
         <div style={s.header}>
@@ -1978,6 +2132,126 @@ export default function EventDetail({ params }) {
           </div>
         ) : (
           <div>
+            {/* GRUPO 0: INTERESSADOS */}
+            {interessados.length > 0 && (
+              <div style={{ marginBottom: '2.5rem' }}>
+                <div style={s.sectionHeader}>
+                  <div style={s.sectionTitle}>◌ Interessados ({interessados.length})</div>
+                </div>
+                <div>
+                  <div style={s.tableHeader}>
+                    <div>participante</div><div>dias</div><div>vaga</div>
+                    <div style={{ textAlign: 'center' }}>remédio</div>
+                    <div style={{ gridColumn: '5 / 9', textAlign: 'center' }}>dia do interesse</div>
+                    <div style={{ textAlign: 'center' }}>ações</div>
+                  </div>
+                  {[...interessados]
+                    .sort((a, b) => new Date(a.interested_at) - new Date(b.interested_at))
+                    .map(p => {
+                      const effectiveRemedioStatus = computeEffectiveRemedioStatus(p);
+                      const dataHora = new Date(p.interested_at).toLocaleString('pt-BR', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        timeZone: 'America/Sao_Paulo',
+                      });
+                      return (
+                        <div key={p.contact_id} style={s.row}>
+                          {/* Nome */}
+                          <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer' }}>
+                            <div style={s.travelerName}>
+                              {p.contacts?.primeira_vez && (
+                                <span title="Primeiro encontro" style={{ color: '#5d9470', fontFamily: "'IM Fell English', serif", fontSize: '13px', marginRight: '4px', userSelect: 'none', opacity: 0.8 }}>✦</span>
+                              )}
+                              {p.contacts?.nickname || p.contacts?.name}
+                            </div>
+                            <div style={s.travelerPhone}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</div>
+                          </div>
+
+                          {/* Dias */}
+                          <div style={s.daysCell}>
+                            <button
+                              onClick={() => toggleDayPresence(p.contact_id, 1, p.date1_confirmed)}
+                              style={{ ...s.dayTag, fontWeight: p.date1_confirmed ? 'bold' : 'normal', color: p.date1_confirmed ? '#3a3530' : '#c8c2b8', border: p.date1_confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', cursor: 'pointer', background: 'transparent' }}
+                              title="Alternar Dia I"
+                            >
+                              {p.date1_confirmed ? 'D1' : <s>D1</s>}
+                            </button>
+                            {hasTwoDates && (
+                              <button
+                                onClick={() => toggleDayPresence(p.contact_id, 2, p.date2_confirmed)}
+                                style={{ ...s.dayTag, fontWeight: p.date2_confirmed ? 'bold' : 'normal', color: p.date2_confirmed ? '#3a3530' : '#c8c2b8', border: p.date2_confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', cursor: 'pointer', background: 'transparent', marginLeft: '5px' }}
+                                title="Alternar Dia II"
+                              >
+                                {p.date2_confirmed ? 'D2' : <s>D2</s>}
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Mover para ativos + Desistente */}
+                          <div style={s.statusIcons}>
+                            <span
+                              title="Mover para ativos"
+                              onClick={() => moverParaAtivos(p.contact_id)}
+                              style={{ cursor: 'pointer', color: '#c8c2b8', fontSize: '15px', userSelect: 'none', transition: 'color 0.2s' }}
+                              onMouseEnter={e => { e.currentTarget.style.color = '#3a3530'; }}
+                              onMouseLeave={e => { e.currentTarget.style.color = '#c8c2b8'; }}
+                            >
+                              ↓
+                            </span>
+                            <span
+                              title="Marcar como Desistente"
+                              onClick={() => {
+                                if (!confirm(`Marcar ${p.contacts?.name?.split(' ')[0]} como desistente?`)) return;
+                                updateParticipantStatus(p.contact_id, 'desistiu');
+                              }}
+                              style={{ cursor: 'pointer', color: '#c8c2b8', fontSize: '11px', userSelect: 'none', transition: 'color 0.2s', marginLeft: '4px' }}
+                            >
+                              ✕
+                            </span>
+                          </div>
+
+                          {/* Remédio */}
+                          <div
+                            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                            onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })}
+                          >
+                            <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
+                          </div>
+
+                          {/* Não há pago/status/inicial/end ainda — mostra a data/hora do interesse nesse espaço */}
+                          <div style={{ gridColumn: '5 / 9', textAlign: 'center', color: '#b0a898', fontSize: '11px', fontFamily: "'Courier Prime', monospace" }}>
+                            manifestou interesse em {dataHora}
+                          </div>
+
+                          {/* Ações: Transferir + WhatsApp */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', gridColumn: '9' }}>
+                            {activeOtherEvents.length > 0 && (
+                              <span
+                                title="Transferir para outra cerimônia"
+                                onClick={() => setTransferModal({ contactId: p.contact_id, contactName: p.contacts?.nickname || p.contacts?.name || '—' })}
+                                style={{ cursor: 'pointer', color: '#8a8278', opacity: 0.45, transition: 'opacity 0.15s', userSelect: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px' }}
+                                onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                onMouseLeave={e => e.currentTarget.style.opacity = 0.45}
+                              >
+                                <TransferIcon />
+                              </span>
+                            )}
+                            <span
+                              title="Abrir chat no WhatsApp"
+                              onClick={() => { const ph = p.contacts?.phone?.replace(/\D/g, ''); if (ph) window.open(`https://wa.me/${ph}`, '_blank'); }}
+                              style={{ cursor: 'pointer', color: '#8a8278', opacity: 0.45, transition: 'opacity 0.15s', userSelect: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '18px', height: '18px' }}
+                              onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                              onMouseLeave={e => e.currentTarget.style.opacity = 0.45}
+                            >
+                              <WaIcon />
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
             {/* GRUPO 1: VIAJANTES ATIVOS */}
             {(() => {
               const allActive = [...confirmados, ...intencao];
@@ -2211,6 +2485,18 @@ export default function EventDetail({ params }) {
             </div>
           </div>
         </div>
+      )}
+
+      {editingCeremony && editFormData && (
+        <CeremonyFormModal
+          data={editFormData}
+          setData={setEditFormData}
+          onSubmit={handleUpdateCeremony}
+          onClose={() => setEditingCeremony(false)}
+          title="Editar Cerimônia"
+          submitLabel="Salvar Alterações"
+          copySource={null}
+        />
       )}
 
       {remedioModal && (() => {
@@ -2588,7 +2874,7 @@ export default function EventDetail({ params }) {
         // "Pago" é derivado do saldo (pagamentos + desconto + transferências cobrindo o esperado),
         // não escolhido manualmente — mesma lógica e mesma fonte de payment_transfers da tela de
         // Pagamentos, pra "saldo" nunca divergir entre as duas telas.
-        const active = participants.filter(p => p.status !== 'desistiu').map(p => {
+        const active = participants.filter(p => p.status !== 'desistiu' && !p.interested_at).map(p => {
           if (p.payment_status === 'conferir pagamento') return { ...p, _statusBuckets: ['conferir pagamento'], _owedAberto: null, _pledgedLocal: 0, _paidSoFar: 0, _expectedAmount: getEffectiveStatus(p).expectedAmount };
           const { expectedAmount, paidSoFar, owedAberto, pledgedLocal, statusBuckets } = getEffectiveStatus(p);
           return { ...p, _expectedAmount: expectedAmount, _paidSoFar: paidSoFar, _owedAberto: owedAberto, _pledgedLocal: pledgedLocal, _statusBuckets: statusBuckets };
@@ -3131,9 +3417,10 @@ export default function EventDetail({ params }) {
             <div style={{ padding: '0.5rem 1.5rem 1.2rem', display: 'flex', gap: '0.6rem' }}>
               <button
                 onClick={saveContact}
-                style={{ flex: 1, padding: '8px', background: '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+                disabled={savingContact}
+                style={{ flex: 1, padding: '8px', background: savingContact ? '#7a7268' : '#3a3530', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: savingContact ? 'default' : 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}
               >
-                salvar
+                {savingContact ? 'salvando...' : 'salvar'}
               </button>
               <button
                 onClick={() => setContactEditModal(null)}
