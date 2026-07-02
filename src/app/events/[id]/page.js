@@ -1567,6 +1567,7 @@ export default function EventDetail({ params }) {
       ficha_message: event.ficha_message || defaultFichaMessage,
       price_1d: event.price_1d != null ? String(event.price_1d) : '',
       price_2d: event.price_2d != null ? String(event.price_2d) : '',
+      preparation_id: event.preparation_id || '',
     });
     setEditingCeremony(true);
   }
@@ -1579,6 +1580,7 @@ export default function EventDetail({ params }) {
       date2: editFormData.date2 || null,
       price_1d: editFormData.price_1d !== '' ? parseFloat(editFormData.price_1d) : null,
       price_2d: editFormData.price_2d !== '' ? parseFloat(editFormData.price_2d) : null,
+      preparation_id: editFormData.preparation_id || null,
     };
     const { error } = await supabase.from('events').update(dataToUpdate).eq('id', eventId);
     if (error) { alert('Erro ao editar cerimônia: ' + error.message); return; }
@@ -1821,7 +1823,10 @@ export default function EventDetail({ params }) {
                 const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
                 const text = event.preparation_text || '';
                 const ph = p.contacts?.phone?.replace(/\D/g, '');
-                if (ph && text) window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}`)}`, '_blank');
+                if (ph && text) {
+                  const pageLink = event.preparation_id ? `\n\n${window.location.origin}/preparacao/${eventId}` : '';
+                  window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}${pageLink}`)}`, '_blank');
+                }
               }
               toggleCheck(p.contact_id, 'preparacao_enviada', p.preparacao_enviada);
             }}
@@ -1947,7 +1952,10 @@ export default function EventDetail({ params }) {
                   const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
                   const text = event.preparation_text || '';
                   const ph = p.contacts?.phone?.replace(/\D/g, '');
-                  if (ph && text) window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}`)}`, '_blank');
+                  if (ph && text) {
+                    const pageLink = event.preparation_id ? `\n\n${window.location.origin}/preparacao/${eventId}` : '';
+                    window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}${pageLink}`)}`, '_blank');
+                  }
                 }
                 toggleCheck(p.contact_id, 'preparacao_enviada', p.preparacao_enviada);
               }}
@@ -1988,6 +1996,9 @@ export default function EventDetail({ params }) {
           <a href="/events" style={{ ...s.navLink, ...s.navLinkActive }}>{isMobile ? <PlantIcon /> : <><PlantIcon /> Cerimônias</>}</a>
           <a href="/pagamentos" style={s.navLink}>{isMobile ? <CoinNavIcon /> : <><CoinNavIcon /> Pagamentos</>}</a>
           <a href="/diario" style={s.navLink}>{isMobile ? <DiarioNavIcon /> : <><DiarioNavIcon /> Diário</>}</a>
+          <a href="/settings/preparations" style={{ ...s.navLink, color: '#6a6258' }} title="Textos de Preparação">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </a>
           <a href="/settings/users" style={{ ...s.navLink, color: '#6a6258' }} title="Gestão de usuários">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>

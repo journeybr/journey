@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 
 const modalLabelStyle = {
@@ -54,6 +55,14 @@ const modalCancelStyle = {
 };
 
 export default function CeremonyFormModal({ data, setData, onSubmit, onClose, title, submitLabel, copySource }) {
+  const [prepTexts, setPrepTexts] = useState([]);
+
+  useEffect(() => {
+    supabase.from('preparation_texts').select('id, title').order('created_at', { ascending: false }).then(({ data }) => {
+      if (data) setPrepTexts(data);
+    });
+  }, []);
+
   async function handleImageUpload(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -154,6 +163,25 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
               <input type="number" min="0" step="0.01" value={data.price_2d} onChange={e => setData({ ...data, price_2d: e.target.value })} placeholder="0.00" style={modalInputStyle} />
             </div>
           </div>
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={modalLabelStyle}>Página de Preparação</label>
+            <select
+              value={data.preparation_id || ''}
+              onChange={e => setData({ ...data, preparation_id: e.target.value })}
+              style={{ ...modalInputStyle, fontFamily: "'Courier Prime', monospace", fontSize: '12px' }}
+            >
+              <option value="">— nenhuma —</option>
+              {prepTexts.map(t => (
+                <option key={t.id} value={t.id}>{t.title}</option>
+              ))}
+            </select>
+            {data.preparation_id && (
+              <div style={{ marginTop: '4px', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#aaa49c' }}>
+                Link que será enviado: /preparacao/[id da cerimônia]
+              </div>
+            )}
+          </div>
+
           <div style={{ display: 'flex', gap: '0.8rem' }}>
             <button type="submit" style={modalSubmitStyle}>{submitLabel}</button>
             <button type="button" onClick={onClose} style={modalCancelStyle}>Cancelar</button>
