@@ -1356,7 +1356,11 @@ export default function EventDetail({ params }) {
           ? outTransfers.every(t => t.status === 'pago')
           : outTransfers.every(t => {
             const consolidator = participants.find(x => x.contact_id === t.to_contact_id);
-            if (!consolidator) return t.status === 'pago'; // orphan receiver: use manual status
+            if (!consolidator) {
+              // Orphan receiver (not enrolled): settled only when ALL their inbound transfers are pago
+              const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
+              return allIn.length > 0 && allIn.every(x => x.status === 'pago');
+            }
             const { owedAberto: cOwed } = getEffectiveStatus(consolidator, 1);
             return cOwed != null && cOwed <= 0;
           });

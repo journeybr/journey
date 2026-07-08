@@ -732,7 +732,10 @@ export default function PagamentosPage() {
       if (g._outTransfers.length === 0) return { ...g, effectiveStatus: 'pago' };
       const allSettled = g._outTransfers.every(t => {
         const cOwed = owedMap[t.to_contact_id];
-        if (cOwed === undefined) return t.status === 'pago';
+        if (cOwed === undefined) {
+          const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
+          return allIn.length > 0 && allIn.every(x => x.status === 'pago');
+        }
         return cOwed != null && cOwed <= 0;
       });
       return { ...g, effectiveStatus: allSettled ? 'pago' : 'transferido' };
@@ -986,7 +989,10 @@ export default function PagamentosPage() {
         } else {
           const allSettled = outT.every(t => {
             const cOwed = owedMap[t.to_contact_id];
-            if (cOwed === undefined) return t.status === 'pago'; // orphan receiver: manual status
+            if (cOwed === undefined) {
+          const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
+          return allIn.length > 0 && allIn.every(x => x.status === 'pago');
+        } // orphan receiver: manual status
             return cOwed != null && cOwed <= 0;
           });
           buckets.push(allSettled ? 'pago' : 'transferido');
