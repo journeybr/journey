@@ -668,34 +668,66 @@ function MedBadge({ status }) {
 function DesistenciaModal({ modal, allContacts, onConfirm, onClose }) {
   const [opcao, setOpcao] = useState(null);
   const [targetContactId, setTargetContactId] = useState('');
-  const canConfirm = opcao && (opcao !== 'mover' || targetContactId);
-  const totalAmount = modal.transfers.reduce((s, t) => s + Number(t.amount), 0);
+  const hasTransfers = modal.transfers.length > 0;
+  const hasPaid = modal.paidSoFar > 0;
+  const needsTarget = opcao === 'mover' || opcao === 'abater';
+  const canConfirm = opcao && (!needsTarget || targetContactId);
+
+  const transferTotal = modal.transfers.reduce((s, t) => s + Number(t.amount), 0);
   const receivers = [...new Set(modal.transfers.map(t => t.to_contact?.nickname || t.to_contact?.name || '—'))].join(', ');
+
+  const transferOpts = [
+    { key: 'mover', label: 'Mover para outra pessoa', desc: 'Outra pessoa assume a transferência' },
+    { key: 'credito', label: 'Manter como crédito', desc: 'O valor fica como crédito para quem recebeu' },
+    { key: 'devolver', label: 'Devolver', desc: 'Cancelar a transferência' },
+  ];
+  const paymentOpts = [
+    { key: 'abater', label: `Abater em outra pessoa — $ ${modal.paidSoFar.toFixed(2)}`, desc: 'O pagamento vira crédito para outro participante' },
+    { key: 'credito_pgto', label: 'Manter como crédito', desc: 'O valor fica como crédito da cerimônia' },
+    { key: 'devolver_pgto', label: 'Devolver', desc: 'Registrar devolução para a pessoa' },
+  ];
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '360px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '380px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace", maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2' }}>
           <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Desistência</div>
           <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>{modal.contactName}</div>
-          <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px' }}>
-            {modal.transfers.length} transferência{modal.transfers.length > 1 ? 's' : ''} ativa{modal.transfers.length > 1 ? 's' : ''} · $ {totalAmount.toFixed(2)} → {receivers}
-          </div>
         </div>
         <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {[
-            { key: 'mover', label: 'Mover para outra pessoa', desc: 'Outra pessoa assume o pagamento' },
-            { key: 'credito', label: 'Manter como crédito', desc: 'O valor fica como crédito para quem recebeu' },
-            { key: 'devolver', label: 'Devolver', desc: 'Cancelar a transferência' },
-          ].map(opt => (
-            <label key={opt.key} onClick={() => setOpcao(opt.key)} style={{ display: 'flex', gap: '8px', cursor: 'pointer', padding: '8px 10px', border: `0.5px solid ${opcao === opt.key ? '#b8b0a4' : '#e0dbd4'}`, borderRadius: '2px', background: opcao === opt.key ? '#f7f4ee' : 'transparent' }}>
-              <input type="radio" name="desistencia_opcao" value={opt.key} checked={opcao === opt.key} onChange={() => setOpcao(opt.key)} style={{ marginTop: '2px', flexShrink: 0 }} />
-              <div>
-                <div style={{ fontSize: '11px', color: '#3a3530', letterSpacing: '0.04em' }}>{opt.label}</div>
-                <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{opt.desc}</div>
+          {hasTransfers && (
+            <>
+              <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>
+                Transferência ativa · $ {transferTotal.toFixed(2)} → {receivers}
               </div>
-            </label>
-          ))}
-          {opcao === 'mover' && (
+              {transferOpts.map(opt => (
+                <label key={opt.key} onClick={() => setOpcao(opt.key)} style={{ display: 'flex', gap: '8px', cursor: 'pointer', padding: '8px 10px', border: `0.5px solid ${opcao === opt.key ? '#b8b0a4' : '#e0dbd4'}`, borderRadius: '2px', background: opcao === opt.key ? '#f7f4ee' : 'transparent' }}>
+                  <input type="radio" name="desistencia_opcao" value={opt.key} checked={opcao === opt.key} onChange={() => setOpcao(opt.key)} style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#3a3530', letterSpacing: '0.04em' }}>{opt.label}</div>
+                    <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </>
+          )}
+          {hasPaid && (
+            <>
+              <div style={{ fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginTop: hasTransfers ? '0.5rem' : 0, marginBottom: '2px' }}>
+                Pagamento direto · $ {modal.paidSoFar.toFixed(2)}
+              </div>
+              {paymentOpts.map(opt => (
+                <label key={opt.key} onClick={() => setOpcao(opt.key)} style={{ display: 'flex', gap: '8px', cursor: 'pointer', padding: '8px 10px', border: `0.5px solid ${opcao === opt.key ? '#b8b0a4' : '#e0dbd4'}`, borderRadius: '2px', background: opcao === opt.key ? '#f7f4ee' : 'transparent' }}>
+                  <input type="radio" name="desistencia_opcao" value={opt.key} checked={opcao === opt.key} onChange={() => setOpcao(opt.key)} style={{ marginTop: '2px', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '11px', color: '#3a3530', letterSpacing: '0.04em' }}>{opt.label}</div>
+                    <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{opt.desc}</div>
+                  </div>
+                </label>
+              ))}
+            </>
+          )}
+          {needsTarget && (
             <select value={targetContactId} onChange={e => setTargetContactId(e.target.value)} style={{ width: '100%', padding: '8px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}>
               <option value="">— selecionar contato —</option>
               {allContacts.map(c => <option key={c.id} value={c.id}>{c.nickname || c.name}</option>)}
@@ -1138,8 +1170,8 @@ export default function EventDetail({ params }) {
     if (p?.status === 'desistiu') { updateParticipantStatus(contactId, 'Confirmado'); return; }
     const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
     const es = getEffectiveStatus(p);
-    if (es.outTransfers.length > 0) {
-      setDesistenciaModal({ contactId, contactName: p?.contacts?.nickname || p?.contacts?.name || firstName, transfers: es.outTransfers });
+    if (es.outTransfers.length > 0 || es.paidSoFar > 0) {
+      setDesistenciaModal({ contactId, contactName: p?.contacts?.nickname || p?.contacts?.name || firstName, transfers: es.outTransfers, paidSoFar: es.paidSoFar });
     } else {
       if (!confirm(`Marcar ${firstName} como desistente?`)) return;
       updateParticipantStatus(contactId, 'desistiu');
@@ -1147,7 +1179,8 @@ export default function EventDetail({ params }) {
   }
 
   async function confirmDesistencia(opcao, targetContactId) {
-    const { contactId, transfers } = desistenciaModal;
+    const { contactId, transfers, paidSoFar, contactName } = desistenciaModal;
+    // Ações sobre transferências de saída
     if (opcao === 'mover' && targetContactId) {
       await Promise.all(transfers.map(t =>
         supabase.from('payment_transfers').update({ from_contact_id: targetContactId }).eq('id', t.id)
@@ -1157,7 +1190,18 @@ export default function EventDetail({ params }) {
         supabase.from('payment_transfers').update({ cancelled: true }).eq('id', t.id)
       ));
     }
-    // 'credito': nada muda nos transfers, fica como crédito para quem recebeu
+    // credito: nada muda nos transfers, fica como crédito para quem recebeu
+
+    // Ações sobre pagamento direto
+    if (opcao === 'abater' && targetContactId && paidSoFar > 0) {
+      // Cria um payment_record no participante alvo com o valor do desistente
+      const target = participants.find(x => x.contact_id === targetContactId);
+      const existing = target?.payment_records || [];
+      const newRecord = { amount: paidSoFar, date: new Date().toISOString().split('T')[0], cancelled: false, method: `crédito: ${contactName}` };
+      await supabase.from('event_participants').update({ payment_records: [...existing, newRecord] }).match({ event_id: eventId, contact_id: targetContactId });
+    }
+    // credito_pgto / devolver_pgto: sem ação automática — fica como nota manual
+
     await updateParticipantStatus(contactId, 'desistiu');
     setDesistenciaModal(null);
     fetchEventData();
@@ -1484,7 +1528,7 @@ export default function EventDetail({ params }) {
       ? `cancelou comprovante — revertido para Em Aberto · ${existingUrl}`
       : 'cancelou comprovante — revertido para Em Aberto';
     const newLog = [...getParticipantLog(contactId), newLogEntry(logMsg)];
-    const updateData = { payment_status: 'em aberto', payment_method: null, comprovante_url: null, payment_log: newLog };
+    const updateData = { payment_status: 'em aberto', payment_method: null, comprovante_url: null, payment_observation: null, payment_log: newLog };
     await supabase.from('event_participants').update(updateData).match({ event_id: eventId, contact_id: contactId });
     setParticipants(prev => prev.map(pp => pp.contact_id === contactId ? { ...pp, ...updateData } : pp));
   }
