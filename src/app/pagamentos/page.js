@@ -731,7 +731,11 @@ export default function PagamentosPage() {
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
       const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
       const methods = [...new Set(realRecords.map(r => r.method || 'Não especificado'))];
-      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus: 'em aberto', _isPagoPortion: isPagoPortion, _outTransfers: outTransfers, methods });
+      // Quando a pessoa é emparelhada (1 dia em cada cerimônia = pacote 2d), os registros de
+      // pagamento vêm de AMBAS as linhas. Se ela pagou para cada cerimônia individualmente,
+      // o paidSoFar pode exceder o total do pacote. Capeia para não inflar o TOTAL A RECEBER.
+      const resumoPaid = total != null ? Math.min(paidSoFar, Math.max(0, total)) : paidSoFar;
+      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, resumoPaid, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus: 'em aberto', _isPagoPortion: isPagoPortion, _outTransfers: outTransfers, methods });
     }
     // Second pass: sub-payer is only "pago" when their consolidator's balance is zero.
     const owedMap = Object.fromEntries(groups.map(g => [g.contactId, g.owedAberto]));
@@ -783,7 +787,7 @@ export default function PagamentosPage() {
 
     const aPagarGroups = resumoGroups.filter(g => g.owedAberto > 0);
     const noLocalGroups = resumoGroups.filter(g => g.pledgedLocal > 0).map(g => ({ ...g, owed: g.pledgedLocal }));
-    const pagoGroups = resumoGroups.filter(g => g.paidSoFar > 0);
+    const pagoGroups = resumoGroups.filter(g => g.resumoPaid > 0);
 
     const recipPending = transferIncomingEntries.filter(g => g.pending > 0).map(g => ({ name: g.name, owed: g.pending }));
     const recipNoLocal = transferIncomingEntries.filter(g => g.noLocal > 0).map(g => ({ name: g.name, owed: g.noLocal }));
@@ -795,7 +799,7 @@ export default function PagamentosPage() {
 
     const aPagar = { groups: aPagarAll, total: aPagarAll.reduce((s, g) => s + (g.owed || 0), 0) };
     const noLocal = { groups: noLocalAll, total: noLocalAll.reduce((s, g) => s + (g.owed || 0), 0) };
-    const pago = { groups: pagoAll, total: pagoAll.reduce((s, g) => s + (g.paidSoFar || 0), 0) };
+    const pago = { groups: pagoAll, total: pagoAll.reduce((s, g) => s + (g.resumoPaid ?? g.paidSoFar ?? 0), 0) };
 
     // Total pago categorizado por método — uma pessoa que pagou em 2 métodos aparece nas 2 categorias.
     const methodNames = {};
