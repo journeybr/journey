@@ -929,7 +929,7 @@ export default function PagamentosPage() {
   // Pré-calcula transferências/saldo/status efetivo de cada linha, uma única vez, reaproveitado no
   // bucket (grupo de status) e na renderização da linha — evita recalcular tudo duas vezes.
   const entriesComputed = useMemo(() => {
-    return allDisplayEntries.map(p => {
+    const raw = allDisplayEntries.map(p => {
       if (p._isTransferOnly) return { ...p, _statusBuckets: [p.payment_status] };
       if (p.payment_status === 'conferir pagamento') return { ...p, _statusBuckets: ['conferir pagamento'], _owedAberto: null, _pledgedLocal: 0, _paidSoFar: 0, _owed: null };
       const records = p.payment_records || [];
@@ -959,15 +959,10 @@ export default function PagamentosPage() {
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
       const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
 
-      // Uma pessoa pode estar em mais de um "balde" ao mesmo tempo: parte paga (pago), parte
-      // prometida a pagar no local (a pagar no local), parte ainda sem destino (em aberto).
-      // "Transferido" só se aplica à parte paga, quando a transferência de saída ainda não foi
-      // resolvida do lado de quem recebeu.
       const buckets = [];
       if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
       if (pledgedLocal > 0) buckets.push('a pagar no local');
-      if (isPagoPortion) buckets.push('_pago_pending'); // placeholder; resolved in second pass
-      if (buckets.length === 0) buckets.push('em aberto');
+      if (buckets.length === 0 && !isPagoPortion) buckets.push('em aberto');
 
       return {
         ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn,
@@ -981,26 +976,25 @@ export default function PagamentosPage() {
     // Second pass: resolve sub-payer status — "transferido" until the consolidator's balance hits zero.
     const owedMap = Object.fromEntries(raw.map(e => [e.contact_id, e._owedAberto]));
     return raw.map(e => {
-      const buckets = e._statusBuckets.filter(b => b !== '_pago_pending');
-      if (e._isPagoPortion) {
-        const outT = e._outTransfers || [];
-        if (outT.length === 0) {
-          buckets.push('pago');
-        } else {
-          const allSettled = outT.every(t => {
-            const cOwed = owedMap[t.to_contact_id];
-            if (cOwed === undefined) {
-          const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
-          return allIn.length > 0 && allIn.every(x => x.status === 'pago');
-        } // orphan receiver: manual status
-            return cOwed != null && cOwed <= 0;
-          });
-          buckets.push(allSettled ? 'pago' : 'transferido');
-        }
+      if (!e._isPagoPortion) return e;
+      const buckets = [...e._statusBuckets];
+      const outT = e._outTransfers || [];
+      if (outT.length === 0) {
+        buckets.push('pago');
+      } else {
+        const allSettled = outT.every(t => {
+          const cOwed = owedMap[t.to_contact_id];
+          if (cOwed === undefined) {
+            const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
+            return allIn.length > 0 && allIn.every(x => x.status === 'pago');
+          }
+          return cOwed != null && cOwed <= 0;
+        });
+        buckets.push(allSettled ? 'pago' : 'transferido');
       }
       return { ...e, _statusBuckets: [...new Set(buckets)] };
     });
-  }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants]);
+  }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants, transfers]);
 
   const countsByStatus = useMemo(() => {
     const c = {};
