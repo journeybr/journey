@@ -665,6 +665,52 @@ function MedBadge({ status }) {
   return <span style={s.medSent}>— pendente</span>;
 }
 
+function DesistenciaModal({ modal, allContacts, onConfirm, onClose }) {
+  const [opcao, setOpcao] = useState(null);
+  const [targetContactId, setTargetContactId] = useState('');
+  const canConfirm = opcao && (opcao !== 'mover' || targetContactId);
+  const totalAmount = modal.transfers.reduce((s, t) => s + Number(t.amount), 0);
+  const receivers = [...new Set(modal.transfers.map(t => t.to_contact?.nickname || t.to_contact?.name || '—'))].join(', ');
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '360px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+        <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2' }}>
+          <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Desistência</div>
+          <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>{modal.contactName}</div>
+          <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px' }}>
+            {modal.transfers.length} transferência{modal.transfers.length > 1 ? 's' : ''} ativa{modal.transfers.length > 1 ? 's' : ''} · $ {totalAmount.toFixed(2)} → {receivers}
+          </div>
+        </div>
+        <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {[
+            { key: 'mover', label: 'Mover para outra pessoa', desc: 'Outra pessoa assume o pagamento' },
+            { key: 'credito', label: 'Manter como crédito', desc: 'O valor fica como crédito para quem recebeu' },
+            { key: 'devolver', label: 'Devolver', desc: 'Cancelar a transferência' },
+          ].map(opt => (
+            <label key={opt.key} onClick={() => setOpcao(opt.key)} style={{ display: 'flex', gap: '8px', cursor: 'pointer', padding: '8px 10px', border: `0.5px solid ${opcao === opt.key ? '#b8b0a4' : '#e0dbd4'}`, borderRadius: '2px', background: opcao === opt.key ? '#f7f4ee' : 'transparent' }}>
+              <input type="radio" name="desistencia_opcao" value={opt.key} checked={opcao === opt.key} onChange={() => setOpcao(opt.key)} style={{ marginTop: '2px', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: '11px', color: '#3a3530', letterSpacing: '0.04em' }}>{opt.label}</div>
+                <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{opt.desc}</div>
+              </div>
+            </label>
+          ))}
+          {opcao === 'mover' && (
+            <select value={targetContactId} onChange={e => setTargetContactId(e.target.value)} style={{ width: '100%', padding: '8px 10px', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}>
+              <option value="">— selecionar contato —</option>
+              {allContacts.map(c => <option key={c.id} value={c.id}>{c.nickname || c.name}</option>)}
+            </select>
+          )}
+        </div>
+        <div style={{ padding: '0 1.5rem 1.2rem', display: 'flex', gap: '0.6rem' }}>
+          <button onClick={() => onConfirm(opcao, targetContactId)} disabled={!canConfirm} style={{ flex: 1, padding: '10px', background: canConfirm ? '#3a3530' : '#c8c2b8', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: canConfirm ? 'pointer' : 'not-allowed', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Confirmar</button>
+          <button onClick={onClose} style={{ flex: 1, padding: '10px', background: 'transparent', color: '#7a7268', border: '0.5px dashed #b8b0a4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Cancelar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function EventDetail({ params }) {
   const [eventId, setEventId] = useState(null);
   const [event, setEvent] = useState(null);
@@ -700,6 +746,7 @@ export default function EventDetail({ params }) {
   const savingContactRef = useRef(false);
   const [activeOtherEvents, setActiveOtherEvents] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
+  const [desistenciaModal, setDesistenciaModal] = useState(null);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [diaryDateFilter, setDiaryDateFilter] = useState('today');
   const [diaryRangeFrom, setDiaryRangeFrom] = useState('');
@@ -1040,6 +1087,9 @@ export default function EventDetail({ params }) {
     } else {
       await supabase.from('event_participants').insert([{ contact_id: contactId, event_id: targetEventId, status: 'intenção de ir', enrollment_log: [toLogEntry] }]);
     }
+    // Move outbound payment transfers to the new event so Pedro Ivo's account doesn't show duplicates
+    await supabase.from('payment_transfers').update({ event_id: targetEventId }).eq('from_contact_id', contactId).eq('event_id', eventId).eq('cancelled', false);
+
     setTransferModal(null);
     fetchEventData();
   }
@@ -1081,6 +1131,36 @@ export default function EventDetail({ params }) {
         p.contact_id === contactId ? { ...p, status: newStatus, enrollment_log: newEnrollmentLog } : p
       ));
     }
+  }
+
+  function handleDesistencia(contactId) {
+    const p = participants.find(x => x.contact_id === contactId);
+    if (p?.status === 'desistiu') { updateParticipantStatus(contactId, 'Confirmado'); return; }
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const es = getEffectiveStatus(p);
+    if (es.outTransfers.length > 0) {
+      setDesistenciaModal({ contactId, contactName: p?.contacts?.nickname || p?.contacts?.name || firstName, transfers: es.outTransfers });
+    } else {
+      if (!confirm(`Marcar ${firstName} como desistente?`)) return;
+      updateParticipantStatus(contactId, 'desistiu');
+    }
+  }
+
+  async function confirmDesistencia(opcao, targetContactId) {
+    const { contactId, transfers } = desistenciaModal;
+    if (opcao === 'mover' && targetContactId) {
+      await Promise.all(transfers.map(t =>
+        supabase.from('payment_transfers').update({ from_contact_id: targetContactId }).eq('id', t.id)
+      ));
+    } else if (opcao === 'devolver') {
+      await Promise.all(transfers.map(t =>
+        supabase.from('payment_transfers').update({ cancelled: true }).eq('id', t.id)
+      ));
+    }
+    // 'credito': nada muda nos transfers, fica como crédito para quem recebeu
+    await updateParticipantStatus(contactId, 'desistiu');
+    setDesistenciaModal(null);
+    fetchEventData();
   }
 
   async function updateRemedioStatus(contactId, newStatus) {
@@ -1746,11 +1826,7 @@ export default function EventDetail({ params }) {
           {/* Desistir */}
           <span
             title={p.status === 'desistiu' ? "Desistente (Clique para reativar)" : "Marcar como Desistente"}
-            onClick={() => {
-              const nextStatus = p.status === 'desistiu' ? 'Confirmado' : 'desistiu';
-              if (nextStatus === 'desistiu' && !confirm(`Marcar ${p.contacts?.name?.split(' ')[0]} como desistente?`)) return;
-              updateParticipantStatus(p.contact_id, nextStatus);
-            }}
+            onClick={() => handleDesistencia(p.contact_id)}
             style={{
               cursor: 'pointer',
               color: p.status === 'desistiu' ? '#c0392b' : '#c8c2b8',
@@ -1939,7 +2015,7 @@ export default function EventDetail({ params }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span title={p.status === 'Confirmado' ? 'Confirmado' : 'Definir como Confirmado'} onClick={() => updateParticipantStatus(p.contact_id, p.status === 'Confirmado' ? 'intenção de ir' : 'Confirmado')} style={{ cursor: 'pointer', color: p.status === 'Confirmado' ? '#3d6b52' : '#c8c2b8', fontSize: '15px', fontWeight: p.status === 'Confirmado' ? 'bold' : 'normal', userSelect: 'none' }}>{p.status === 'Confirmado' ? '✓' : '○'}</span>
-            <span onClick={() => { const ns = p.status === 'desistiu' ? 'Confirmado' : 'desistiu'; if (ns === 'desistiu' && !confirm(`Marcar ${p.contacts?.name?.split(' ')[0]} como desistente?`)) return; updateParticipantStatus(p.contact_id, ns); }} style={{ cursor: 'pointer', color: p.status === 'desistiu' ? '#c0392b' : '#c8c2b8', fontSize: '11px', userSelect: 'none' }}>✕</span>
+            <span onClick={() => handleDesistencia(p.contact_id)} style={{ cursor: 'pointer', color: p.status === 'desistiu' ? '#c0392b' : '#c8c2b8', fontSize: '11px', userSelect: 'none' }}>✕</span>
             {!isSimplified && (
               <span title="Mover para Interessados" onClick={() => moverParaInteressados(p.contact_id)} style={{ cursor: 'pointer', color: '#c8c2b8', fontSize: '12px', userSelect: 'none' }}>↑</span>
             )}
@@ -2516,6 +2592,15 @@ export default function EventDetail({ params }) {
             </div>
           </div>
         </div>
+      )}
+
+      {desistenciaModal && (
+        <DesistenciaModal
+          modal={desistenciaModal}
+          allContacts={allContacts}
+          onConfirm={confirmDesistencia}
+          onClose={() => setDesistenciaModal(null)}
+        />
       )}
 
       {editingCeremony && editFormData && (
