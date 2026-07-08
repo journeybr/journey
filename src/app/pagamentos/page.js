@@ -714,9 +714,12 @@ export default function PagamentosPage() {
       const pledgeRecords = records.filter(r => r.pledge);
       const realRecords = records.filter(r => !r.pledge);
       const paidSoFar = realRecords.reduce((s, r) => s + (r.amount || 0), 0);
-      // Só conta transferência de SAÍDA cujo event_id também esteja no escopo selecionado —
-      // mesma regra usada do lado de quem recebe, pra nunca contar só uma ponta do par.
-      const outTransfers = rows.flatMap(r => transfersOutMap[`${r.contact_id}-${r.event_id}`] || []).filter(t => resumoCeremonies.has(t.event_id));
+      // Conta TODAS as transferências de saída desta pessoa cujo event_id esteja no escopo —
+      // independe de o event_id da transferência coincidir com a cerimônia em que o remetente
+      // participa. Sem isso, transferências com event_id "errado" somem do sumOut mas continuam
+      // aparecendo em transferIncomingEntries, criando diferença no resumo.
+      const contactIds = new Set(rows.map(r => r.contact_id));
+      const outTransfers = transfers.filter(t => contactIds.has(t.from_contact_id) && resumoCeremonies.has(t.event_id));
       const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
       const expectedAmount = price != null ? price - sumOut : price;
       const total = expectedAmount != null ? expectedAmount - discount : null;
