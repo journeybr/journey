@@ -723,12 +723,7 @@ export default function PagamentosPage() {
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
       const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
       let effectiveStatus = anchor.payment_status || 'em aberto';
-      if (isPagoPortion) {
-        if (outTransfers.length === 0) effectiveStatus = 'pago';
-        else if (outTransfers.every(t => t.status === 'pago')) effectiveStatus = 'pago';
-        else if (outTransfers.some(t => t.status === 'a pagar no local')) effectiveStatus = 'a pagar no local';
-        else effectiveStatus = 'transferido';
-      }
+      if (isPagoPortion) effectiveStatus = 'pago';
       const methods = [...new Set(realRecords.map(r => r.method || 'Não especificado'))];
       groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus, methods });
     }
@@ -960,9 +955,7 @@ export default function PagamentosPage() {
       if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
       if (pledgedLocal > 0) buckets.push('a pagar no local');
       if (isPagoPortion) {
-        if (outTransfers.length === 0 || outTransfers.every(t => t.status === 'pago')) buckets.push('pago');
-        else if (outTransfers.some(t => t.status === 'a pagar no local')) buckets.push('a pagar no local');
-        else buckets.push('transferido');
+        buckets.push('pago');
       }
       if (buckets.length === 0) buckets.push('em aberto');
 

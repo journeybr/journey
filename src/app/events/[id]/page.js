@@ -1347,9 +1347,7 @@ export default function EventDetail({ params }) {
     if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
     if (pledgedLocal > 0) buckets.push('a pagar no local');
     if (isPagoPortion) {
-      if (outTransfers.length === 0 || outTransfers.every(t => t.status === 'pago')) buckets.push('pago');
-      else if (outTransfers.some(t => t.status === 'a pagar no local')) buckets.push('a pagar no local');
-      else buckets.push('transferido');
+      buckets.push('pago');
     }
     if (buckets.length === 0) buckets.push('em aberto');
     const statusBuckets = [...new Set(buckets)];
