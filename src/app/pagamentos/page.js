@@ -722,12 +722,21 @@ export default function PagamentosPage() {
       const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
       const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
-      let effectiveStatus = anchor.payment_status || 'em aberto';
-      if (isPagoPortion) effectiveStatus = 'pago';
       const methods = [...new Set(realRecords.map(r => r.method || 'Não especificado'))];
-      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus, methods });
+      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus: 'em aberto', _isPagoPortion: isPagoPortion, _outTransfers: outTransfers, methods });
     }
-    return groups;
+    // Second pass: sub-payer is only "pago" when their consolidator's balance is zero.
+    const owedMap = Object.fromEntries(groups.map(g => [g.contactId, g.owedAberto]));
+    return groups.map(g => {
+      if (!g._isPagoPortion) return g;
+      if (g._outTransfers.length === 0) return { ...g, effectiveStatus: 'pago' };
+      const allSettled = g._outTransfers.every(t => {
+        const cOwed = owedMap[t.to_contact_id];
+        if (cOwed === undefined) return t.status === 'pago';
+        return cOwed != null && cOwed <= 0;
+      });
+      return { ...g, effectiveStatus: allSettled ? 'pago' : 'transferido' };
+    });
   }, [participants, resumoCeremonies, transfersOutMap]);
 
   // Lado de quem RECEBE — sempre calculado à parte (nunca via sumIn dentro de resumoGroups),
@@ -954,17 +963,36 @@ export default function PagamentosPage() {
       const buckets = [];
       if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
       if (pledgedLocal > 0) buckets.push('a pagar no local');
-      if (isPagoPortion) {
-        buckets.push('pago');
-      }
+      if (isPagoPortion) buckets.push('_pago_pending'); // placeholder; resolved in second pass
       if (buckets.length === 0) buckets.push('em aberto');
 
       return {
         ...p, _outTransfers: outTransfers, _inTransfers: inTransfers, _sumOut: sumOut, _sumIn: sumIn,
         _baseExpected: baseExpected, _adjExpected: expectedAmount, _total: total,
         _paidSoFar: paidSoFar, _pledgedLocal: pledgedLocal, _owedAberto: owedAberto,
+        _isPagoPortion: isPagoPortion,
         _owed: (owedAberto || 0) + pledgedLocal, _statusBuckets: [...new Set(buckets)],
       };
+    });
+
+    // Second pass: resolve sub-payer status — "transferido" until the consolidator's balance hits zero.
+    const owedMap = Object.fromEntries(raw.map(e => [e.contact_id, e._owedAberto]));
+    return raw.map(e => {
+      const buckets = e._statusBuckets.filter(b => b !== '_pago_pending');
+      if (e._isPagoPortion) {
+        const outT = e._outTransfers || [];
+        if (outT.length === 0) {
+          buckets.push('pago');
+        } else {
+          const allSettled = outT.every(t => {
+            const cOwed = owedMap[t.to_contact_id];
+            if (cOwed === undefined) return t.status === 'pago'; // orphan receiver: manual status
+            return cOwed != null && cOwed <= 0;
+          });
+          buckets.push(allSettled ? 'pago' : 'transferido');
+        }
+      }
+      return { ...e, _statusBuckets: [...new Set(buckets)] };
     });
   }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants]);
 

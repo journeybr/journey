@@ -1313,7 +1313,7 @@ export default function EventDetail({ params }) {
   // transferida para outra pessoa (transferido). "parcelado" é a única intenção marcada
   // manualmente — o resto é tudo derivado do saldo, igual à tela de Pagamentos (mesma fonte de
   // payment_transfers), pra o saldo nunca divergir entre as duas telas.
-  function getEffectiveStatus(p) {
+  function getEffectiveStatus(p, _depth = 0) {
     // Quando a pessoa está pareada entre 2 cerimônias (1 dia em cada), os pagamentos dela podem
     // estar registrados na linha da OUTRA cerimônia — essa tela só vê a linha desta cerimônia, então
     // não tem como calcular o saldo combinado certo aqui. Quem sabe a conta completa é a tela de
@@ -1347,7 +1347,21 @@ export default function EventDetail({ params }) {
     if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
     if (pledgedLocal > 0) buckets.push('a pagar no local');
     if (isPagoPortion) {
-      buckets.push('pago');
+      if (outTransfers.length === 0) {
+        buckets.push('pago');
+      } else {
+        // Sub-payer status depends on whether all consolidators have fully settled.
+        // _depth guard prevents infinite recursion (consolidators rarely re-delegate).
+        const allConsolidatorsPaid = _depth > 0
+          ? outTransfers.every(t => t.status === 'pago')
+          : outTransfers.every(t => {
+            const consolidator = participants.find(x => x.contact_id === t.to_contact_id);
+            if (!consolidator) return t.status === 'pago'; // orphan receiver: use manual status
+            const { owedAberto: cOwed } = getEffectiveStatus(consolidator, 1);
+            return cOwed != null && cOwed <= 0;
+          });
+        buckets.push(allConsolidatorsPaid ? 'pago' : 'transferido');
+      }
     }
     if (buckets.length === 0) buckets.push('em aberto');
     const statusBuckets = [...new Set(buckets)];
