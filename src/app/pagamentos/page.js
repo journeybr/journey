@@ -1193,6 +1193,8 @@ export default function PagamentosPage() {
                       paidGroups[key].amount += Number(t.amount);
                     });
                     const paidGroupsList = paidGroupOrder.map(k => paidGroups[k]);
+                    const totalPaidOrphan = p._totalPaid || 0;
+                    const remaining = Math.max(0, total - totalPaidOrphan);
                     return (
                       <div key={p.id} style={{ marginBottom: '10px' }}>
                         <div onClick={() => setOrphanModal({ contactId: p.contact_id, name, transfersList: list })}
@@ -1201,7 +1203,12 @@ export default function PagamentosPage() {
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
                             {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, isMerged: true })} />}
                           </div>
-                          <span style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '10px' }}>
+                            {totalPaidOrphan > 0 && (
+                              <span style={{ fontSize: '9px', color: '#6a7c45', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.04em' }}>pago $ {totalPaidOrphan.toFixed(2)}</span>
+                            )}
+                            <span style={{ fontSize: '10px', color: remaining === 0 ? '#6a7c45' : '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {remaining.toFixed(2)}</span>
+                          </div>
                         </div>
                         {list.map((t, i) => (
                           <TransferLine key={t.id} t={t} direction="in" isLast={paidGroupsList.length === 0 && i === list.length - 1}
