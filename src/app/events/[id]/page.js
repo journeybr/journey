@@ -133,6 +133,24 @@ function getEnrolledDaysLabel(p, event) {
   return `${fmt.slice(0, -1).join(', ')} e ${fmt[fmt.length - 1]}`;
 }
 
+function resolveVars(text, { firstName, p, event, pageUrl }) {
+  const eventDates = [event?.date, event?.date2].filter(Boolean)
+    .map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }));
+  const dataCerimonia = eventDates.length > 1 ? `${eventDates[0]} e ${eventDates[1]}` : (eventDates[0] || '');
+  const diaInscrito = getEnrolledDaysLabel(p, event);
+  let msg = text
+    .replace(/\[nome\]/gi, firstName || '')
+    .replace(/\[nome da cerimônia\]/gi, event?.name || '')
+    .replace(/\[data da cerimônia\]/gi, dataCerimonia)
+    .replace(/\[dia inscrito\]/gi, diaInscrito);
+  if (pageUrl) {
+    msg = /\[link\]/i.test(msg) ? msg.replace(/\[link\]/gi, pageUrl) : msg + '\n\n' + pageUrl;
+  } else {
+    msg = msg.replace(/\[link\]/gi, '');
+  }
+  return msg;
+}
+
 // Linhas de memória de cálculo (somente leitura) — mesmo visual da tela de Pagamentos, mas sem
 // botões de ação aqui: gerenciar transferência/pagamento continua sendo feito nos lugares de sempre.
 function CalcBaseLine({ label, amount }) {
@@ -1199,7 +1217,7 @@ export default function EventDetail({ params }) {
 
     const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
     const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
-    const isPagoPortion = paidSoFar > 0 && owedAberto != null && owedAberto <= 0;
+    const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
 
     const buckets = [];
     if (owedAberto != null && owedAberto > 0) buckets.push(p.payment_status === 'parcelado' ? 'parcelado' : 'em aberto');
@@ -1824,8 +1842,9 @@ export default function EventDetail({ params }) {
                 const text = event.preparation_text || '';
                 const ph = p.contacts?.phone?.replace(/\D/g, '');
                 if (ph && text) {
-                  const pageLink = event.preparation_id ? `\n\n${window.location.origin}/preparacao/${eventId}` : '';
-                  window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}${pageLink}`)}`, '_blank');
+                  const pageUrl = event.preparation_id ? `${window.location.origin}/preparacao/${eventId}` : '';
+                  const msg = resolveVars(text, { firstName, p, event, pageUrl });
+                  window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`, '_blank');
                 }
               }
               toggleCheck(p.contact_id, 'preparacao_enviada', p.preparacao_enviada);
@@ -1845,7 +1864,7 @@ export default function EventDetail({ params }) {
                 const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
                 const text = event.address || '';
                 const ph = p.contacts?.phone?.replace(/\D/g, '');
-                if (ph && text) window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}`)}`, '_blank');
+                if (ph && text) window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(resolveVars(text, { firstName, p, event, pageUrl: null }))}`, '_blank');
               }
               toggleCheck(p.contact_id, 'endereco_enviado', p.endereco_enviado);
             }}
@@ -1953,8 +1972,9 @@ export default function EventDetail({ params }) {
                   const text = event.preparation_text || '';
                   const ph = p.contacts?.phone?.replace(/\D/g, '');
                   if (ph && text) {
-                    const pageLink = event.preparation_id ? `\n\n${window.location.origin}/preparacao/${eventId}` : '';
-                    window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}${pageLink}`)}`, '_blank');
+                    const pageUrl = event.preparation_id ? `${window.location.origin}/preparacao/${eventId}` : '';
+                    const msg = resolveVars(text, { firstName, p, event, pageUrl });
+                    window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`, '_blank');
                   }
                 }
                 toggleCheck(p.contact_id, 'preparacao_enviada', p.preparacao_enviada);
@@ -1970,7 +1990,7 @@ export default function EventDetail({ params }) {
                   const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
                   const text = event.address || '';
                   const ph = p.contacts?.phone?.replace(/\D/g, '');
-                  if (ph && text) window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(`Oi ${firstName}! ${text}`)}`, '_blank');
+                  if (ph && text) window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(resolveVars(text, { firstName, p, event, pageUrl: null }))}`, '_blank');
                 }
                 toggleCheck(p.contact_id, 'endereco_enviado', p.endereco_enviado);
               }}
@@ -1996,7 +2016,7 @@ export default function EventDetail({ params }) {
           <a href="/events" style={{ ...s.navLink, ...s.navLinkActive }}>{isMobile ? <PlantIcon /> : <><PlantIcon /> Cerimônias</>}</a>
           <a href="/pagamentos" style={s.navLink}>{isMobile ? <CoinNavIcon /> : <><CoinNavIcon /> Pagamentos</>}</a>
           <a href="/diario" style={s.navLink}>{isMobile ? <DiarioNavIcon /> : <><DiarioNavIcon /> Diário</>}</a>
-          <a href="/settings/preparations" style={{ ...s.navLink, color: '#6a6258' }} title="Textos de Preparação">
+          <a href="/settings" style={{ ...s.navLink, color: '#6a6258' }} title="Configurações">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           </a>
           <a href="/settings/users" style={{ ...s.navLink, color: '#6a6258' }} title="Gestão de usuários">

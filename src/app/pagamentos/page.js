@@ -721,7 +721,7 @@ export default function PagamentosPage() {
       }
       const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
-      const isPagoPortion = paidSoFar > 0 && owedAberto != null && owedAberto <= 0;
+      const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
       let effectiveStatus = anchor.payment_status || 'em aberto';
       if (isPagoPortion) {
         if (outTransfers.length === 0) effectiveStatus = 'pago';
@@ -950,7 +950,7 @@ export default function PagamentosPage() {
 
       const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
-      const isPagoPortion = paidSoFar > 0 && owedAberto != null && owedAberto <= 0;
+      const isPagoPortion = owedAberto != null && owedAberto <= 0 && (paidSoFar > 0 || total <= 0);
 
       // Uma pessoa pode estar em mais de um "balde" ao mesmo tempo: parte paga (pago), parte
       // prometida a pagar no local (a pagar no local), parte ainda sem destino (em aberto).
