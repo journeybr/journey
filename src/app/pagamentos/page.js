@@ -1193,6 +1193,7 @@ export default function PagamentosPage() {
                       paidGroups[key].amount += Number(t.amount);
                     });
                     const paidGroupsList = paidGroupOrder.map(k => paidGroups[k]);
+                    const myOrphanPayments = orphanPayments.filter(op => op.contact_id === p.contact_id);
                     const totalPaidOrphan = p._totalPaid || 0;
                     const remaining = Math.max(0, total - totalPaidOrphan);
                     return (
@@ -1203,20 +1204,19 @@ export default function PagamentosPage() {
                             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{name}</span>
                             {combinedLog.length > 0 && <HistoryIcon onClick={() => setLogModal({ name, log: combinedLog, isMerged: true })} />}
                           </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, marginLeft: '10px' }}>
-                            {totalPaidOrphan > 0 && (
-                              <span style={{ fontSize: '9px', color: '#6a7c45', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.04em' }}>pago $ {totalPaidOrphan.toFixed(2)}</span>
-                            )}
-                            <span style={{ fontSize: '10px', color: remaining === 0 ? '#6a7c45' : '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace" }}>$ {remaining.toFixed(2)}</span>
-                          </div>
+                          <span style={{ fontSize: '10px', color: remaining === 0 ? '#6a7c45' : '#b0a898', letterSpacing: '0.04em', fontFamily: "'Courier Prime', monospace", flexShrink: 0, marginLeft: '10px' }}>$ {remaining.toFixed(2)}</span>
                         </div>
                         {list.map((t, i) => (
-                          <TransferLine key={t.id} t={t} direction="in" isLast={paidGroupsList.length === 0 && i === list.length - 1}
+                          <TransferLine key={t.id} t={t} direction="in" isLast={paidGroupsList.length === 0 && myOrphanPayments.length === 0 && i === list.length - 1}
                             onCancel={() => cancelTransfer(t.id)} />
                         ))}
                         {paidGroupsList.map((g, i) => (
-                          <TransferPaidLine key={i} date={g.date} method={g.method} amount={g.amount} isLast={i === paidGroupsList.length - 1}
+                          <TransferPaidLine key={i} date={g.date} method={g.method} amount={g.amount} isLast={myOrphanPayments.length === 0 && i === paidGroupsList.length - 1}
                             onUndo={() => unmarkTransferPaidBatch(g.ids)} />
+                        ))}
+                        {myOrphanPayments.map((op, i) => (
+                          <TransferPaidLine key={op.id} date={op.payment_date} method={op.method} amount={op.amount} isLast={i === myOrphanPayments.length - 1}
+                            onUndo={() => cancelOrphanPayment(op.id)} />
                         ))}
                       </div>
                     );
