@@ -109,7 +109,7 @@ const CoinIcon = ({ status = 'em aberto' }) => {
   const isParcelado = status === 'parcelado';
   const isConferir = status === 'conferir pagamento';
   const isActive = isPago || isTransferido || isLocal || isParcelado || isConferir;
-  const bg = isPago ? '#5d9470' : isTransferido ? '#6a8caa' : isLocal ? '#8a7a58' : isParcelado ? '#7a68a4' : isConferir ? '#c4892a' : 'none';
+  const bg = isPago ? '#5d9470' : isTransferido ? '#b8960a' : isLocal ? '#8a7a58' : isParcelado ? '#7a68a4' : isConferir ? '#c4892a' : 'none';
   const fg = isActive ? '#f7f4ee' : '#c8c2b8';
   const symbol = isConferir ? '?' : '$';
   return (
@@ -1800,7 +1800,7 @@ export default function EventDetail({ params }) {
         {!isSimplified ? (() => {
           const { owedAberto, effectiveStatus: ps } = getEffectiveStatus(p);
           const intent = p.payment_status === 'pago' ? 'em aberto' : (p.payment_status || 'em aberto');
-          const col = ps === 'pago' ? '#5d9470' : ps === 'transferido' ? '#6a8caa' : ps === 'a pagar no local' ? '#8a7a58' : ps === 'parcelado' ? '#7a68a4' : ps === 'conferir pagamento' ? '#c4892a' : '#9a9288';
+          const col = ps === 'pago' ? '#5d9470' : ps === 'transferido' ? '#b8960a' : ps === 'a pagar no local' ? '#8a7a58' : ps === 'parcelado' ? '#7a68a4' : ps === 'conferir pagamento' ? '#c4892a' : '#9a9288';
           const label = ps === 'pago' ? 'pago' : ps === 'transferido' ? 'transferido' : ps === 'a pagar no local' ? 'no local' : ps === 'parcelado' ? 'parcelado' : ps === 'conferir pagamento' ? 'conferir' : 'em aberto';
           return (
             <div
@@ -2915,7 +2915,7 @@ export default function EventDetail({ params }) {
           { key: 'conferir pagamento', label: 'Conferir Pagamento', icon: '?', color: '#c4892a' },
           { key: 'a pagar no local', label: 'A pagar no local', icon: '◐', color: '#8a7a58' },
           { key: 'parcelado', label: 'Parcelado', icon: '◑', color: '#7a68a4' },
-          { key: 'transferido', label: 'Transferido', icon: '⇄', color: '#6a8caa' },
+          { key: 'transferido', label: 'Transferido', icon: '⇄', color: '#b8960a' },
           { key: 'pago', label: 'Pago', icon: '◉', color: '#5d9470' },
         ];
         const totalPago = active.filter(p => p._statusBuckets.includes('pago')).length;
@@ -2936,7 +2936,7 @@ export default function EventDetail({ params }) {
                 <div style={{ fontSize: '10px', color: '#b0a898', letterSpacing: '0.06em' }}>
                   <span style={{ color: '#5d9470' }}>◉ {totalPago}</span>
                   {' · '}
-                  <span style={{ color: '#6a8caa' }}>⇄ {totalTransferido}</span>
+                  <span style={{ color: '#b8960a' }}>⇄ {totalTransferido}</span>
                   {' · '}
                   <span style={{ color: '#7a68a4' }}>◑ {totalParcelado}</span>
                   {' · '}
