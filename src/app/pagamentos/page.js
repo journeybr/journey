@@ -243,6 +243,7 @@ export default function PagamentosPage() {
   const [logModal, setLogModal] = useState(null);
   const [contactsList, setContactsList] = useState([]);
   const [transfers, setTransfers] = useState([]);
+  const [orphanPayments, setOrphanPayments] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
   const [statusFilter, setStatusFilter] = useState(new Set());
   const [resumoModal, setResumoModal] = useState(false);
@@ -278,7 +279,7 @@ export default function PagamentosPage() {
 
   async function fetchData() {
     setLoading(true);
-    const [{ data }, { data: contactsData }, { data: transfersData }] = await Promise.all([
+    const [{ data }, { data: contactsData }, { data: transfersData }, { data: orphanPaymentsData }] = await Promise.all([
       supabase
         .from('event_participants')
         .select('*, contacts(id, name, nickname, phone), events!inner(id, name, date, date2, price_1d, price_2d, active, payment_text)')
@@ -289,11 +290,13 @@ export default function PagamentosPage() {
         .from('payment_transfers')
         .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,active)')
         .eq('cancelled', false),
+      supabase.from('orphan_payments').select('*').eq('cancelled', false),
     ]);
     const active = (data || []).filter(p => p.events?.active !== false && (p.date1_confirmed || p.date2_confirmed));
     setParticipants(active);
     setContactsList(contactsData || []);
     setTransfers((transfersData || []).filter(t => t.events?.active !== false));
+    setOrphanPayments(orphanPaymentsData || []);
     setLoading(false);
   }
 
@@ -332,22 +335,18 @@ export default function PagamentosPage() {
   // guardar um payment_record — "registrar o pagamento" aqui significa marcar as transferências
   // pendentes como pagas, uma a uma em ordem, até o valor digitado se esgotar.
   async function registerOrphanPayment(contactId, amount, date, method) {
-    let remaining = parseFloat(amount);
-    const dateStr = date ? new Date(date + 'T12:00:00').toLocaleDateString('pt-BR') : '';
-    // batchId marca todas as transferências resolvidas nesta MESMA confirmação — assim a tela
-    // mostra uma única linha "pagamento" pro grupo, em vez de uma por transferência.
-    const batchId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const pending = transfers
-      .filter(t => t.to_contact_id === contactId && t.status !== 'pago' && t.status !== 'a pagar no local')
-      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
-    for (const t of pending) {
-      if (remaining < Number(t.amount) - 0.005) break;
-      const updateData = { status: 'pago', payment_date: date || null, payment_method: method || null, log: [...(t.log || []), newLogEntry(`registrou pagamento de $${Number(t.amount).toFixed(2)}${method ? ` via ${method}` : ''}${dateStr ? ` em ${dateStr}` : ''}`, null, { batchId })] };
-      await supabase.from('payment_transfers').update(updateData).eq('id', t.id);
-      setTransfers(prev => prev.map(x => x.id === t.id ? { ...x, ...updateData } : x));
-      remaining -= Number(t.amount);
-    }
+    const { data, error } = await supabase
+      .from('orphan_payments')
+      .insert({ contact_id: contactId, amount: parseFloat(amount), payment_date: date || null, method: method || null })
+      .select()
+      .single();
+    if (!error && data) setOrphanPayments(prev => [...prev, data]);
     setOrphanModal(null);
+  }
+
+  async function cancelOrphanPayment(paymentId) {
+    await supabase.from('orphan_payments').update({ cancelled: true }).eq('id', paymentId);
+    setOrphanPayments(prev => prev.filter(p => p.id !== paymentId));
   }
 
   async function unmarkTransferPaid(transferId) {
@@ -669,6 +668,12 @@ export default function PagamentosPage() {
     return m;
   }, [participants]);
 
+  const orphanPaidByContact = useMemo(() => {
+    const map = {};
+    orphanPayments.forEach(p => { map[p.contact_id] = (map[p.contact_id] || 0) + Number(p.amount); });
+    return map;
+  }, [orphanPayments]);
+
   // ── Resumo de pagamentos ─────────────────────────────────────────────────
   // Agrupa por PESSOA (não por linha) — um par pareado em 29 dias conta como UM grupo de 2 dias,
   // mesmo que só uma das duas cerimônias do par esteja selecionada no resumo. Transferências são
@@ -733,14 +738,15 @@ export default function PagamentosPage() {
       const allSettled = g._outTransfers.every(t => {
         const cOwed = owedMap[t.to_contact_id];
         if (cOwed === undefined) {
-          const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
-          return allIn.length > 0 && allIn.every(x => x.status === 'pago');
+          const totalOwed = transfers.filter(x => x.to_contact_id === t.to_contact_id).reduce((s, x) => s + Number(x.amount), 0);
+          const totalPaid = orphanPaidByContact[t.to_contact_id] || 0;
+          return totalOwed > 0 && totalPaid >= totalOwed;
         }
         return cOwed != null && cOwed <= 0;
       });
       return { ...g, effectiveStatus: allSettled ? 'pago' : 'transferido' };
     });
-  }, [participants, resumoCeremonies, transfersOutMap]);
+  }, [participants, resumoCeremonies, transfersOutMap, transfers, orphanPaidByContact]);
 
   // Lado de quem RECEBE — sempre calculado à parte (nunca via sumIn dentro de resumoGroups),
   // pra não depender de "essa é a cerimônia âncora da pessoa" — isso é o que causava o resumo
@@ -844,13 +850,12 @@ export default function PagamentosPage() {
       groups[key].transfersList.push(t);
     });
     return Object.values(groups).map(g => {
-      const allPaid = g.transfersList.every(t => t.status === 'pago');
-      const anyNoLocal = g.transfersList.some(t => t.status === 'a pagar no local');
-      const anyConferir = g.transfersList.some(t => t.status === 'conferir pagamento');
-      const status = allPaid ? 'pago' : anyNoLocal ? 'a pagar no local' : anyConferir ? 'conferir pagamento' : 'em aberto';
-      return { ...g, payment_status: status };
+      const totalOwed = g.transfersList.reduce((s, t) => s + Number(t.amount), 0);
+      const totalPaid = orphanPaidByContact[g.contact_id] || 0;
+      const status = totalPaid >= totalOwed && totalOwed > 0 ? 'pago' : 'em aberto';
+      return { ...g, payment_status: status, _totalOwed: totalOwed, _totalPaid: totalPaid };
     });
-  }, [transfers, participants]);
+  }, [transfers, participants, orphanPaidByContact]);
 
   // Transferências de SAÍDA cujo event_id não corresponde a nenhuma linha ativa do remetente —
   // ficam invisíveis em qualquer card (transfersOutMap não acha onde pendurar), mesmo que o
@@ -985,8 +990,9 @@ export default function PagamentosPage() {
         const allSettled = outT.every(t => {
           const cOwed = owedMap[t.to_contact_id];
           if (cOwed === undefined) {
-            const allIn = transfers.filter(x => x.to_contact_id === t.to_contact_id);
-            return allIn.length > 0 && allIn.every(x => x.status === 'pago');
+            const totalOwed = transfers.filter(x => x.to_contact_id === t.to_contact_id).reduce((s, x) => s + Number(x.amount), 0);
+            const totalPaid = orphanPaidByContact[t.to_contact_id] || 0;
+            return totalOwed > 0 && totalPaid >= totalOwed;
           }
           return cOwed != null && cOwed <= 0;
         });
@@ -994,7 +1000,7 @@ export default function PagamentosPage() {
       }
       return { ...e, _statusBuckets: [...new Set(buckets)] };
     });
-  }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants, transfers]);
+  }, [allDisplayEntries, transfersOutMap, transfersInMap, primaryEventByContact, participants, transfers, orphanPaidByContact]);
 
   const countsByStatus = useMemo(() => {
     const c = {};
@@ -1551,8 +1557,10 @@ export default function PagamentosPage() {
 
       {/* Orphan (transfer-only) payment modal */}
       {orphanModal && (() => {
-        const pending = orphanModal.transfersList.filter(t => t.status !== 'pago' && t.status !== 'a pagar no local');
-        const pendingTotal = pending.reduce((s, t) => s + Number(t.amount), 0);
+        const totalOwed = orphanModal.transfersList.reduce((s, t) => s + Number(t.amount), 0);
+        const myPayments = orphanPayments.filter(p => p.contact_id === orphanModal.contactId);
+        const totalPaid = myPayments.reduce((s, p) => s + Number(p.amount), 0);
+        const remaining = Math.max(0, totalOwed - totalPaid);
         return (
           <div onClick={() => setOrphanModal(null)}
             style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -1564,10 +1572,20 @@ export default function PagamentosPage() {
                 <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '2px', fontStyle: 'italic' }}>Transferências recebidas — não participa de nenhuma cerimônia</div>
               </div>
 
-              {pending.length > 0 && (
-                <div style={{ padding: '1rem 1.5rem 0' }}>
-                  <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Ações</div>
-                  <button onClick={() => setOrphanModal(prev => ({ ...prev, formOpen: !prev.formOpen, method: prev.method || 'Câmbio', paymentAmount: prev.paymentAmount ?? String(pendingTotal), paymentDate: prev.paymentDate ?? new Date().toISOString().split('T')[0] }))}
+              <div style={{ padding: '1rem 1.5rem 0' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.8rem' }}>
+                  {[['Saldo total', totalOwed], ['Pago', totalPaid], ['Restante', remaining]].map(([label, val]) => (
+                    <div key={label}>
+                      <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>{label}</div>
+                      <div style={{ fontSize: '14px', color: remaining === 0 && label === 'Restante' ? '#6a7c45' : '#3a3530' }}>$ {Number(val).toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {remaining > 0 && (
+                <div style={{ padding: '0 1.5rem 0' }}>
+                  <button onClick={() => setOrphanModal(prev => ({ ...prev, formOpen: !prev.formOpen, method: prev.method || 'Câmbio', paymentAmount: prev.paymentAmount ?? String(remaining.toFixed(2)), paymentDate: prev.paymentDate ?? new Date().toISOString().split('T')[0] }))}
                     style={{ width: '100%', padding: '8px 10px', background: orphanModal.formOpen ? '#3a3530' : 'transparent', color: orphanModal.formOpen ? '#f7f4ee' : '#7a7268', border: orphanModal.formOpen ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                     <span>+</span><span>Inserir pagamento</span>
                   </button>
@@ -1584,7 +1602,7 @@ export default function PagamentosPage() {
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
                         <div>
                           <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '2px' }}>Valor (USD)</div>
-                          <input type="number" min="0" step="0.01" value={orphanModal.paymentAmount}
+                          <input type="number" min="0" max={remaining} step="0.01" value={orphanModal.paymentAmount}
                             onChange={e => setOrphanModal(prev => ({ ...prev, paymentAmount: e.target.value }))}
                             placeholder="0.00" autoFocus
                             style={{ width: '90px', padding: '6px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }} />
@@ -1606,12 +1624,22 @@ export default function PagamentosPage() {
                 </div>
               )}
 
-              <div style={{ padding: '1rem 1.5rem 0' }}>
-                <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.4rem' }}>Saldo</div>
-                <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '20px', color: '#3a3530' }}>
-                  $ {pendingTotal.toFixed(2)}
+              {myPayments.length > 0 && (
+                <div style={{ padding: '1rem 1.5rem 0' }}>
+                  <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.4rem' }}>Pagamentos registrados</div>
+                  {myPayments.map(p => (
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '0.5px solid #ece8e0' }}>
+                      <div>
+                        <span style={{ fontSize: '12px', color: '#3a3530' }}>$ {Number(p.amount).toFixed(2)}</span>
+                        {p.method && <span style={{ fontSize: '9px', color: '#aaa49c', marginLeft: '6px' }}>{p.method}</span>}
+                        {p.payment_date && <span style={{ fontSize: '9px', color: '#aaa49c', marginLeft: '6px' }}>{new Date(p.payment_date + 'T12:00:00').toLocaleDateString('pt-BR')}</span>}
+                      </div>
+                      <button onClick={() => cancelOrphanPayment(p.id)}
+                        style={{ fontSize: '9px', color: '#c47b5a', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px' }}>cancelar</button>
+                    </div>
+                  ))}
                 </div>
-              </div>
+              )}
 
               <div style={{ padding: '1.5rem' }}>
                 <button onClick={() => setOrphanModal(null)}
