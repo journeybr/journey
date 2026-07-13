@@ -160,7 +160,7 @@ export default function PreparationsPage() {
           </div>
           <form onSubmit={handleSave}>
             <div style={{ marginBottom: '1.4rem' }}>
-              <label style={s.label}>Título interno (para identificar)</label>
+              <label style={s.label}>Título (será exibido na página)</label>
               <input
                 required
                 value={form.title}

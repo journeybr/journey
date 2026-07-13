@@ -54,11 +54,41 @@ const modalCancelStyle = {
   flex: 1,
 };
 
+function TemplateLoader({ category, onLoad }) {
+  const [templates, setTemplates] = useState([]);
+  useEffect(() => {
+    supabase.from('message_templates')
+      .select('id, name, content, updated_at, created_at')
+      .eq('category', category)
+      .order('updated_at', { ascending: false })
+      .then(({ data }) => { if (data) setTemplates(data); });
+  }, [category]);
+  if (templates.length === 0) return null;
+  const fmtDate = d => new Date(d).toLocaleDateString('pt-BR');
+  return (
+    <select
+      defaultValue=""
+      onChange={e => {
+        const t = templates.find(t => t.id === e.target.value);
+        if (t) { onLoad(t.content); e.target.value = ''; }
+      }}
+      style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.06em', color: '#aaa49c', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, outline: 'none' }}
+    >
+      <option value="" disabled>↓ carregar modelo</option>
+      {templates.map(t => (
+        <option key={t.id} value={t.id}>
+          {t.name} — {fmtDate(t.updated_at || t.created_at)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default function CeremonyFormModal({ data, setData, onSubmit, onClose, title, submitLabel, copySource }) {
   const [prepTexts, setPrepTexts] = useState([]);
 
   useEffect(() => {
-    supabase.from('preparation_texts').select('id, title').order('created_at', { ascending: false }).then(({ data }) => {
+    supabase.from('preparation_texts').select('id, title, created_at').order('created_at', { ascending: false }).then(({ data }) => {
       if (data) setPrepTexts(data);
     });
   }, []);
@@ -133,7 +163,10 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
             </div>
           )}
           <div style={{ marginBottom: '1.2rem' }}>
-            <label style={modalLabelStyle}>Mensagem para Convidar</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+              <label style={{ ...modalLabelStyle, marginBottom: 0 }}>Mensagem para Convidar</label>
+              <TemplateLoader category="convidar" onLoad={v => setData(d => ({ ...d, invite_message: v }))} />
+            </div>
             <textarea value={data.invite_message || ''} onChange={e => setData({ ...data, invite_message: e.target.value })} rows="3" placeholder="Texto que vai junto com o link de interesse ao copiar..." style={{ ...modalInputStyle, resize: 'vertical' }} />
           </div>
           <div style={{ marginBottom: '1.2rem' }}>
@@ -141,17 +174,26 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
             <textarea value={data.address || ''} onChange={e => setData({ ...data, address: e.target.value })} rows="2" placeholder="Endereço, link do Maps, referências..." style={{ ...modalInputStyle, resize: 'vertical' }} />
           </div>
           <div style={{ marginBottom: '1.2rem' }}>
-            <label style={modalLabelStyle}>Texto de Preparação</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+              <label style={{ ...modalLabelStyle, marginBottom: 0 }}>Texto de Preparação</label>
+              <TemplateLoader category="preparacao" onLoad={v => setData(d => ({ ...d, preparation_text: v }))} />
+            </div>
             <textarea value={data.preparation_text || ''} onChange={e => setData({ ...data, preparation_text: e.target.value })} rows="3" placeholder="Informações e orientações para preparação..." style={{ ...modalInputStyle, resize: 'vertical' }} />
           </div>
           <div style={{ marginBottom: '1.2rem' }}>
-            <label style={modalLabelStyle}>Texto para Pagamento</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+              <label style={{ ...modalLabelStyle, marginBottom: 0 }}>Texto para Pagamento</label>
+              <TemplateLoader category="pagamento" onLoad={v => setData(d => ({ ...d, payment_text: v }))} />
+            </div>
             <textarea value={data.payment_text || ''} onChange={e => setData({ ...data, payment_text: e.target.value })} rows="3" placeholder="Informações sobre formas de pagamento, valores, PIX..." style={{ ...modalInputStyle, resize: 'vertical' }} />
           </div>
           <div style={{ marginBottom: '1.2rem' }}>
-            <label style={modalLabelStyle}>Mensagem para Enviar Ficha de Triagem</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+              <label style={{ ...modalLabelStyle, marginBottom: 0 }}>Mensagem para Enviar Ficha de Triagem</label>
+              <TemplateLoader category="ficha" onLoad={v => setData(d => ({ ...d, ficha_message: v }))} />
+            </div>
             <textarea value={data.ficha_message || ''} onChange={e => setData({ ...data, ficha_message: e.target.value })} rows="5" placeholder={'Oi, [nome]!\n\nSegue o Formulário de Triagem...\n\n[link]'} style={{ ...modalInputStyle, resize: 'vertical' }} />
-            <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.05em' }}>Use [nome] e [link] como variáveis.</div>
+            <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.05em' }}>Variáveis: [nome] · [link] · [nome da cerimônia] · [data da cerimônia] · [dia inscrito]</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
             <div>
@@ -172,7 +214,7 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
             >
               <option value="">— nenhuma —</option>
               {prepTexts.map(t => (
-                <option key={t.id} value={t.id}>{t.title}</option>
+                <option key={t.id} value={t.id}>{t.title} — {new Date(t.created_at).toLocaleDateString('pt-BR')}</option>
               ))}
             </select>
             {data.preparation_id && (

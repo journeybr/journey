@@ -1,70 +1,51 @@
-'use client';
+import { createClient } from '@supabase/supabase-js';
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useParams } from 'next/navigation';
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  );
+}
 
-export default function PreparacaoPage() {
-  const { eventId } = useParams();
-  const [state, setState] = useState('loading'); // 'loading' | 'found' | 'unavailable'
-  const [event, setEvent] = useState(null);
-  const [content, setContent] = useState('');
-
-  useEffect(() => {
-    if (!eventId) return;
-    (async () => {
-      const { data: ev } = await supabase
-        .from('events')
-        .select('id, name, date, date2, active, preparation_id')
-        .eq('id', eventId)
-        .single();
-
-      if (!ev || ev.active === false || !ev.preparation_id) {
-        setState('unavailable');
-        return;
-      }
-
-      const { data: prep } = await supabase
-        .from('preparation_texts')
-        .select('content')
-        .eq('id', ev.preparation_id)
-        .single();
-
-      if (!prep) { setState('unavailable'); return; }
-
-      setEvent(ev);
-      setContent(prep.content);
-      setState('found');
-    })();
-  }, [eventId]);
-
-  const formatDate = d => {
-    if (!d) return null;
-    return new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+export async function generateMetadata() {
+  const ogImage = '/preparacao.jpeg';
+  return {
+    title: 'Preparação para a Cerimônia',
+    description: '',
+    openGraph: {
+      title: 'Preparação para a Cerimônia',
+      description: '',
+      images: [ogImage],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: 'Preparação para a Cerimônia',
+      images: [ogImage],
+    },
   };
+}
 
-  if (state === 'loading') {
-    return (
-      <div style={{ minHeight: '100vh', background: '#fdfbf7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#aaa49c', letterSpacing: '0.1em' }}>carregando…</span>
-      </div>
-    );
+export default async function PreparacaoPage({ params }) {
+  const { eventId } = await params;
+  const supabase = getSupabase();
+
+  const { data: ev } = await supabase
+    .from('events')
+    .select('id, active, preparation_id')
+    .eq('id', eventId)
+    .single();
+
+  if (!ev || ev.active === false || !ev.preparation_id) {
+    return <Unavailable />;
   }
 
-  if (state === 'unavailable') {
-    return (
-      <div style={{ minHeight: '100vh', background: '#fdfbf7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', padding: '2rem' }}>
-        <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '2rem', color: '#c8c2b8', fontWeight: 400 }}>✦</div>
-        <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#aaa49c', letterSpacing: '0.08em', textAlign: 'center', maxWidth: '320px' }}>
-          Este conteúdo não está disponível.
-        </p>
-      </div>
-    );
-  }
+  const { data: prep } = await supabase
+    .from('preparation_texts')
+    .select('title, content')
+    .eq('id', ev.preparation_id)
+    .single();
 
-  const dateLabel = event.date2
-    ? `${formatDate(event.date)} e ${formatDate(event.date2)}`
-    : formatDate(event.date);
+  if (!prep) return <Unavailable />;
 
   return (
     <>
@@ -128,36 +109,33 @@ export default function PreparacaoPage() {
       `}</style>
 
       <div style={{ minHeight: '100vh', background: '#fdfbf7' }}>
-        {/* Cabeçalho */}
         <div style={{ borderBottom: '0.5px solid #e8e2d8', padding: '2.5rem 2rem 2rem', textAlign: 'center' }}>
           <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.16em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.8rem' }}>
             etapa inicial da cerimônia
           </div>
-          <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '2.4rem', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>
-            {event.name}
+          <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '2.4rem', fontWeight: 400, color: '#3a3530', margin: 0 }}>
+            {prep.title}
           </h1>
-          {dateLabel && (
-            <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#b0a898', letterSpacing: '0.08em' }}>
-              {dateLabel}
-            </div>
-          )}
         </div>
 
-        {/* Conteúdo */}
         <div style={{ maxWidth: '680px', margin: '0 auto', padding: '3rem 2rem 5rem' }}>
           <div
             className="prep-content"
-            dangerouslySetInnerHTML={{ __html: content }}
+            dangerouslySetInnerHTML={{ __html: prep.content }}
           />
-        </div>
-
-        {/* Rodapé discreto */}
-        <div style={{ borderTop: '0.5px solid #e8e2d8', padding: '1.5rem 2rem', textAlign: 'center' }}>
-          <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.1rem', color: '#c8c2b8', fontStyle: 'italic' }}>
-            ✦ journey
-          </span>
         </div>
       </div>
     </>
+  );
+}
+
+function Unavailable() {
+  return (
+    <div style={{ minHeight: '100vh', background: '#fdfbf7', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', padding: '2rem' }}>
+      <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '2rem', color: '#c8c2b8', fontWeight: 400 }}>✦</div>
+      <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#aaa49c', letterSpacing: '0.08em', textAlign: 'center', maxWidth: '320px' }}>
+        Este conteúdo não está disponível.
+      </p>
+    </div>
   );
 }

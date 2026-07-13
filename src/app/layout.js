@@ -1,6 +1,11 @@
 import './globals.css';
 
+const siteUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : 'http://localhost:3000';
+
 export const metadata = {
+  metadataBase: new URL(siteUrl),
   title: 'Journey | Gestão de Experiências',
   description: 'Plataforma para gestão de pessoas em experiências enteogênicas.',
 };
