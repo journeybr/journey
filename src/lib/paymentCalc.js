@@ -6,35 +6,48 @@
 // Acha, entre as linhas do MESMO contato, uma parceira de pareamento "pacote" — duas cerimônias
 // de 1 dia cada, com datas dentro de 29 dias uma da outra, contam como um pacote de 2 dias.
 export function findPairPartner(p, allParticipants) {
-  const candidates = allParticipants.filter(x =>
-    x.contact_id === p.contact_id && x.event_id !== p.event_id && x.events?.active !== false
+  // Layer 1: explicit link (either direction).
+  const linkedId = p.events?.linked_event_id;
+  if (linkedId) {
+    const direct = allParticipants.find(x =>
+      x.contact_id === p.contact_id && x.event_id === linkedId && x.events?.active !== false
+    );
+    if (direct) return direct;
+  }
+  const reverseExplicit = allParticipants.find(x =>
+    x.contact_id === p.contact_id &&
+    x.event_id !== p.event_id &&
+    x.events?.linked_event_id === p.event_id &&
+    x.events?.active !== false
   );
-  const thisDays = [];
-  if (p.date1_confirmed && p.events?.date) thisDays.push(p.events.date);
-  if (p.date2_confirmed && p.events?.date2) thisDays.push(p.events.date2);
-  return candidates.find(x => {
-    const otherDays = [];
-    if (x.date1_confirmed && x.events?.date) otherDays.push(x.events.date);
-    if (x.date2_confirmed && x.events?.date2) otherDays.push(x.events.date2);
-    for (const d1 of thisDays) for (const d2 of otherDays) {
-      if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) return true;
-    }
-    return false;
-  });
+  if (reverseExplicit) return reverseExplicit;
+
+  // Layer 2: 29-day proximity fallback — preserves existing records that predate explicit linking.
+  if (p.events?.disable_auto_pair) return null;
+  const pDate = p.events?.date ? new Date(p.events.date) : null;
+  if (!pDate) return null;
+  return allParticipants.find(x =>
+    x.contact_id === p.contact_id &&
+    x.event_id !== p.event_id &&
+    !x.events?.linked_event_id &&
+    !x.events?.disable_auto_pair &&
+    x.events?.active !== false &&
+    x.events?.date &&
+    Math.abs(new Date(x.events.date) - pDate) <= 29 * 24 * 60 * 60 * 1000
+  ) ?? null;
 }
 
 // Preço "solo" de uma linha, sem pareamento — exige os DOIS dias confirmados na MESMA cerimônia
 // pra cobrar o valor de 2 dias; confirmar só um dos dois (independente de qual) cobra 1 dia.
 export function soloExpected(p) {
-  if (!p.date1_confirmed && !p.date2_confirmed) return null;
-  return (p.date1_confirmed && p.date2_confirmed && p.events?.price_2d != null)
-    ? p.events.price_2d
-    : (p.events?.price_1d ?? null);
+  const n = [p.date1_confirmed, p.date2_confirmed, p.date3_confirmed].filter(Boolean).length;
+  if (n === 0) return null;
+  return (n >= 2 && p.events?.price_2d != null) ? p.events.price_2d : (p.events?.price_1d ?? null);
 }
 
 // Valor esperado de UMA linha, considerando pareamento com outra cerimônia do mesmo contato.
 export function computeExpected(p, allParticipants) {
-  if (!p.date1_confirmed && !p.date2_confirmed) return null;
+  if (!p.date1_confirmed && !p.date2_confirmed && !p.date3_confirmed) return null;
   const partner = findPairPartner(p, allParticipants);
   if (partner) {
     return p.events?.price_2d != null ? p.events.price_2d / 2 : (p.events?.price_1d ?? null);
@@ -50,7 +63,7 @@ export function computeBasePriceForContact(allParticipantsSameContact) {
   let any = false;
   for (const p of allParticipantsSameContact) {
     if (merged.has(p.event_id)) continue;
-    if (!p.date1_confirmed && !p.date2_confirmed) continue;
+    if (!p.date1_confirmed && !p.date2_confirmed && !p.date3_confirmed) continue;
     any = true;
     const remaining = allParticipantsSameContact.filter(x => !merged.has(x.event_id));
     const partner = findPairPartner(p, remaining);

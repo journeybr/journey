@@ -103,6 +103,7 @@ function ImagesTab() {
   const labels = {
     pagamento: 'Pagamento',
     ficha: 'Ficha de Triagem',
+    preparacao: 'Preparação',
   };
 
   return (

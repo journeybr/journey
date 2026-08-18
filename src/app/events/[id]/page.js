@@ -126,6 +126,7 @@ function getEnrolledDaysLabel(p, event) {
   const days = [];
   if (p?.date1_confirmed && event?.date) days.push(event.date);
   if (p?.date2_confirmed && event?.date2) days.push(event.date2);
+  if (p?.date3_confirmed && event?.date3) days.push(event.date3);
   days.sort();
   const fmt = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }));
   if (fmt.length === 0) return event?.name || 'Cerimônia';
@@ -134,7 +135,7 @@ function getEnrolledDaysLabel(p, event) {
 }
 
 function resolveVars(text, { firstName, p, event, pageUrl }) {
-  const eventDates = [event?.date, event?.date2].filter(Boolean)
+  const eventDates = [event?.date, event?.date2, event?.date3].filter(Boolean)
     .map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }));
   const dataCerimonia = eventDates.length > 1 ? `${eventDates[0]} e ${eventDates[1]}` : (eventDates[0] || '');
   const diaInscrito = getEnrolledDaysLabel(p, event);
@@ -820,7 +821,7 @@ export default function EventDetail({ params }) {
     const today = new Date().toISOString().split('T')[0];
     supabase
       .from('event_participants')
-      .select('date1_confirmed, date2_confirmed, events(date, date2)')
+      .select('date1_confirmed, date2_confirmed, date3_confirmed, events(date, date2, date3)')
       .eq('contact_id', paymentModal.contactId)
       .not('status', 'eq', 'desistiu')
       .then(({ data }) => {
@@ -831,6 +832,8 @@ export default function EventDetail({ params }) {
             days.push(row.events.date);
           if (row.date2_confirmed && row.events.date2 && row.events.date2 >= today)
             days.push(row.events.date2);
+          if (row.date3_confirmed && row.events.date3 && row.events.date3 >= today)
+            days.push(row.events.date3);
         });
         days.sort();
         setContactAllDays(days);
@@ -982,7 +985,7 @@ export default function EventDetail({ params }) {
       const contactIds = partData.map(p => p.contact_id).filter(Boolean);
       const { data: otherParts } = await supabase
         .from('event_participants')
-        .select('contact_id, date1_confirmed, date2_confirmed, events!inner(date, date2, price_2d, active)')
+        .select('event_id, contact_id, date1_confirmed, date2_confirmed, date3_confirmed, events!inner(date, date2, date3, price_2d, active, linked_event_id, disable_auto_pair)')
         .in('contact_id', contactIds)
         .neq('event_id', eventId)
         .not('status', 'eq', 'desistiu');
@@ -992,23 +995,30 @@ export default function EventDetail({ params }) {
         thisDatesByContact[p.contact_id] = [];
         if (p.date1_confirmed && eventData.date) thisDatesByContact[p.contact_id].push(eventData.date);
         if (p.date2_confirmed && eventData.date2) thisDatesByContact[p.contact_id].push(eventData.date2);
+        if (p.date3_confirmed && eventData.date3) thisDatesByContact[p.contact_id].push(eventData.date3);
       });
 
       const crossMap = {};
       (otherParts || [])
         .filter(p => p.events?.active !== false)
         .forEach(p => {
-          const otherDays = [];
-          if (p.date1_confirmed && p.events?.date) otherDays.push(p.events.date);
-          if (p.date2_confirmed && p.events?.date2) otherDays.push(p.events.date2);
-          const thisDays = thisDatesByContact[p.contact_id] || [];
-          for (const d1 of otherDays) {
-            for (const d2 of thisDays) {
-              if (Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29) {
-                crossMap[p.contact_id] = eventData.price_2d != null ? eventData.price_2d / 2 : null;
-                break;
-              }
-            }
+          // Explicit link takes priority over proximity
+          const explicitPair =
+            p.events?.linked_event_id === eventId ||
+            eventData.linked_event_id === p.event_id;
+          const proximityPair = !explicitPair &&
+            !p.events?.disable_auto_pair &&
+            !eventData.disable_auto_pair &&
+            (() => {
+              const otherDays = [];
+              if (p.date1_confirmed && p.events?.date) otherDays.push(p.events.date);
+              if (p.date2_confirmed && p.events?.date2) otherDays.push(p.events.date2);
+              if (p.date3_confirmed && p.events?.date3) otherDays.push(p.events.date3);
+              const thisDays = thisDatesByContact[p.contact_id] || [];
+              return otherDays.some(d1 => thisDays.some(d2 => Math.abs(new Date(d1) - new Date(d2)) / 86400000 <= 29));
+            })();
+          if (explicitPair || proximityPair) {
+            crossMap[p.contact_id] = eventData.price_2d != null ? eventData.price_2d / 2 : null;
           }
         });
       setCrossCeremonyExpected(crossMap);
@@ -1127,9 +1137,37 @@ export default function EventDetail({ params }) {
   }
 
   async function toggleDayPresence(contactId, day, currentStatus) {
-    const field = day === 1 ? 'date1_confirmed' : 'date2_confirmed';
-    const dayLabel = day === 1 ? 'Dia I' : 'Dia II';
+    const fields = ['date1_confirmed', 'date2_confirmed', 'date3_confirmed'];
+    const field = fields[day - 1];
+    const dayLabel = ['Dia I', 'Dia II', 'Dia III'][day - 1];
     const p = participants.find(x => x.contact_id === contactId);
+    if (hasThreeDates) {
+      const d1 = p?.date1_confirmed ?? false;
+      const d2 = p?.date2_confirmed ?? false;
+      const d3 = p?.date3_confirmed ?? false;
+      const next = { d1, d2, d3, [['d1','d2','d3'][day-1]]: !currentStatus };
+      const count = [next.d1, next.d2, next.d3].filter(Boolean).length;
+      if (count > 2) {
+        alert('Máximo de 2 dias por cerimônia. Remove um dia antes de adicionar outro.');
+        return;
+      }
+      // D2 sozinho não é válido (é o dia do meio, não uma meia cerimônia)
+      if (next.d2 && !next.d1 && !next.d3) {
+        alert('Dia II sozinho não é válido. Escolha D1+D2 ou D2+D3 para cerimônia completa, ou D1/D3 para meia cerimônia.');
+        return;
+      }
+      // D1+D3 sem D2 não é válido (dias de ponta sem o meio)
+      if (next.d1 && next.d3 && !next.d2) {
+        alert('Não é possível confirmar D1 e D3 sem D2. Escolha D1+D2 ou D2+D3.');
+        return;
+      }
+    } else if (!currentStatus) {
+      const confirmed = [p?.date1_confirmed, p?.date2_confirmed].filter(Boolean).length;
+      if (confirmed >= 2) {
+        alert('Máximo de 2 dias por cerimônia. Remove um dia antes de adicionar outro.');
+        return;
+      }
+    }
     const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
     const action = !currentStatus ? 'confirmou' : 'removeu';
     const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`${action} ${dayLabel} para ${firstName}`)];
@@ -1321,7 +1359,7 @@ export default function EventDetail({ params }) {
     const crossCeremonyPaired = crossCeremonyExpected[p.contact_id] !== undefined;
     const baseExpected = crossCeremonyPaired
       ? crossCeremonyExpected[p.contact_id]
-      : (p.date1_confirmed && p.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+      : ([p.date1_confirmed, p.date2_confirmed, p.date3_confirmed].filter(Boolean).length >= 2 && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
     const outTransfers = transfers.filter(t => t.from_contact_id === p.contact_id && t.event_id === eventId);
     const inTransfers = transfers.filter(t => t.to_contact_id === p.contact_id);
     const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
@@ -1501,7 +1539,7 @@ export default function EventDetail({ params }) {
   async function confirmPayment(contactId) {
     const today = new Date().toISOString().split('T')[0];
     const p = participants.find(x => x.contact_id === contactId);
-    const amount = (p?.date1_confirmed && p?.date2_confirmed && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
+    const amount = ([p?.date1_confirmed, p?.date2_confirmed, p?.date3_confirmed].filter(Boolean).length >= 2 && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
     const updateData = {
       payment_status: 'pago',
       payment_method: 'Câmbio',
@@ -1770,6 +1808,7 @@ export default function EventDetail({ params }) {
   if (!event) return <div style={{ textAlign: 'center', padding: '5rem' }}>Cerimônia não encontrada.</div>;
 
   const hasTwoDates = !!event.date2;
+  const hasThreeDates = !!event.date3;
 
   const remedioOptions = [
     { value: 'enviar', label: 'Enviar', icon: '✉️', color: '#bbb' },
@@ -1798,6 +1837,12 @@ export default function EventDetail({ params }) {
   const day2PrimeiraVez = day2Active.filter(p => p.contacts?.primeira_vez).length;
   const day2TotalCount = activeParticipants.filter(p => p.date2_confirmed).length;
   const day2Stats = { confirmados: day2ConfirmadosCount, reservados: day2ReservadosCount, total: day2TotalCount, primeiraVez: day2PrimeiraVez };
+  const day3Active = activeParticipants.filter(p => p.date3_confirmed);
+  const day3ConfirmadosCount = day3Active.filter(p => computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus) === 'Confirmado').length;
+  const day3ReservadosCount = day3Active.filter(p => computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus) === 'Reservado').length;
+  const day3PrimeiraVez = day3Active.filter(p => p.contacts?.primeira_vez).length;
+  const day3TotalCount = activeParticipants.filter(p => p.date3_confirmed).length;
+  const day3Stats = { confirmados: day3ConfirmadosCount, reservados: day3ReservadosCount, total: day3TotalCount, primeiraVez: day3PrimeiraVez };
 
   const renderParticipantRow = (p, isSimplified = false) => {
     const hasRemedioAccess = p.status === 'intenção de ir' || p.status === 'Confirmado';
@@ -1854,6 +1899,23 @@ export default function EventDetail({ params }) {
                   title="Alternar Dia II"
                 >
                   {p.date2_confirmed ? 'D2' : <s>D2</s>}
+                </button>
+              )}
+              {hasThreeDates && (
+                <button
+                  onClick={() => toggleDayPresence(p.contact_id, 3, p.date3_confirmed)}
+                  style={{
+                    ...s.dayTag,
+                    fontWeight: p.date3_confirmed ? 'bold' : 'normal',
+                    color: p.date3_confirmed ? '#3a3530' : '#c8c2b8',
+                    border: p.date3_confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8',
+                    cursor: 'pointer',
+                    background: 'transparent',
+                    marginLeft: '5px'
+                  }}
+                  title="Alternar Dia III"
+                >
+                  {p.date3_confirmed ? 'D3' : <s>D3</s>}
                 </button>
               )}
             </>
@@ -2071,7 +2133,7 @@ export default function EventDetail({ params }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '0.6rem' }}>
           <div style={{ display: 'flex', gap: '4px' }}>
-            {!isSimplified ? <>{dayBtn(1, p.date1_confirmed)}{hasTwoDates && dayBtn(2, p.date2_confirmed)}</> : <span style={{ color: '#c0b8b0', fontSize: '10px' }}>—</span>}
+            {!isSimplified ? <>{dayBtn(1, p.date1_confirmed)}{hasTwoDates && dayBtn(2, p.date2_confirmed)}{hasThreeDates && dayBtn(3, p.date3_confirmed)}</> : <span style={{ color: '#c0b8b0', fontSize: '10px' }}>—</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span title={p.status === 'Confirmado' ? 'Confirmado' : 'Definir como Confirmado'} onClick={() => updateParticipantStatus(p.contact_id, p.status === 'Confirmado' ? 'intenção de ir' : 'Confirmado')} style={{ cursor: 'pointer', color: p.status === 'Confirmado' ? '#3d6b52' : '#c8c2b8', fontSize: '15px', fontWeight: p.status === 'Confirmado' ? 'bold' : 'normal', userSelect: 'none' }}>{p.status === 'Confirmado' ? '✓' : '○'}</span>
@@ -2204,7 +2266,7 @@ export default function EventDetail({ params }) {
             {isMobile ? (
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.4rem' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : [])].map(({ label, stats }) => (
+                  {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : []), ...(event.date3 ? [{ label: 'D3', stats: day3Stats }] : [])].map(({ label, stats }) => (
                     <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
                       <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
                       <span style={{ color: '#d0c8c0' }}>—</span>
@@ -2239,7 +2301,7 @@ export default function EventDetail({ params }) {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '0.8rem' }}>
-                {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : [])].map(({ label, stats }) => (
+                {[{ label: 'D1', stats: day1Stats }, ...(event.date2 ? [{ label: 'D2', stats: day2Stats }] : []), ...(event.date3 ? [{ label: 'D3', stats: day3Stats }] : [])].map(({ label, stats }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '5px', fontFamily: "'Courier Prime', monospace", fontSize: '10px' }}>
                     <span style={{ color: '#7a6e66', letterSpacing: '0.08em', fontSize: '9px' }}>{label}</span>
                     <span style={{ color: '#d0c8c0' }}>—</span>
@@ -2278,10 +2340,13 @@ export default function EventDetail({ params }) {
         </div>
 
         {/* Filtro de dia */}
-        {hasTwoDates && participants.length > 0 && (
+        {(hasTwoDates || hasThreeDates) && participants.length > 0 && (
           <div style={{ display: 'flex', gap: '6px', marginTop: isMobile ? '1.4rem' : '0rem', marginBottom: '1.8rem', alignItems: 'center' }}>
             <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginRight: '4px' }}>filtrar:</span>
-            {[{ val: 'both', label: 'D1+D2' }, { val: 'day1', label: 'D1' }, { val: 'day2', label: 'D2' }, { val: 'none', label: 'nenhum' }].map(f => (
+            {(hasThreeDates
+              ? [{ val: 'day1', label: 'D1' }, { val: 'day2', label: 'D2' }, { val: 'day3', label: 'D3' }, { val: 'none', label: 'nenhum' }]
+              : [{ val: 'both', label: 'D1+D2' }, { val: 'day1', label: 'D1' }, { val: 'day2', label: 'D2' }, { val: 'none', label: 'nenhum' }]
+            ).map(f => (
               <button key={f.val} onClick={() => setDayFilter(dayFilter === f.val ? null : f.val)} style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.1em', textTransform: 'uppercase', padding: '3px 9px', borderRadius: '2px', cursor: 'pointer', border: dayFilter === f.val ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', background: dayFilter === f.val ? '#3a3530' : 'transparent', color: dayFilter === f.val ? '#f7f4ee' : '#9a9288', transition: 'all 0.15s' }}>
                 {f.label}
               </button>
@@ -2349,6 +2414,15 @@ export default function EventDetail({ params }) {
                                 title="Alternar Dia II"
                               >
                                 {p.date2_confirmed ? 'D2' : <s>D2</s>}
+                              </button>
+                            )}
+                            {hasThreeDates && (
+                              <button
+                                onClick={() => toggleDayPresence(p.contact_id, 3, p.date3_confirmed)}
+                                style={{ ...s.dayTag, fontWeight: p.date3_confirmed ? 'bold' : 'normal', color: p.date3_confirmed ? '#3a3530' : '#c8c2b8', border: p.date3_confirmed ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', cursor: 'pointer', background: 'transparent', marginLeft: '5px' }}
+                                title="Alternar Dia III"
+                              >
+                                {p.date3_confirmed ? 'D3' : <s>D3</s>}
                               </button>
                             )}
                           </div>
@@ -2422,7 +2496,7 @@ export default function EventDetail({ params }) {
             {/* GRUPO 1: VIAJANTES ATIVOS */}
             {(() => {
               const allActive = [...confirmados, ...intencao];
-              const applyDayFilter = p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : dayFilter === 'none' ? (!p.date1_confirmed && !p.date2_confirmed) : true;
+              const applyDayFilter = p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'day3' ? p.date3_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : dayFilter === 'none' ? (!p.date1_confirmed && !p.date2_confirmed && !p.date3_confirmed) : true;
               const filteredActive = allActive.filter(applyDayFilter).sort((a, b) => (a.contacts?.name || '').localeCompare(b.contacts?.name || ''));
               return (
             <div>
@@ -2469,7 +2543,7 @@ export default function EventDetail({ params }) {
                 <div style={s.emptyNote}>Nenhum desistente nesta cerimônia.</div>
               ) : (() => {
                 const filtered = [...iniciais]
-                  .filter(p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : dayFilter === 'none' ? (!p.date1_confirmed && !p.date2_confirmed) : true)
+                  .filter(p => dayFilter === 'day1' ? p.date1_confirmed : dayFilter === 'day2' ? p.date2_confirmed : dayFilter === 'day3' ? p.date3_confirmed : dayFilter === 'both' ? (p.date1_confirmed && p.date2_confirmed) : dayFilter === 'none' ? (!p.date1_confirmed && !p.date2_confirmed && !p.date3_confirmed) : true)
                   .sort((a, b) => (a.contacts?.name || '').localeCompare(b.contacts?.name || ''));
                 if (filtered.length === 0) return <div style={s.emptyNote}>Nenhum contato para este dia.</div>;
                 return isMobile ? (
@@ -2506,8 +2580,7 @@ export default function EventDetail({ params }) {
                         day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                         timeZone: 'America/Sao_Paulo',
                       });
-                      const dias = p.date1_confirmed && p.date2_confirmed ? 'D1 e D2'
-                        : p.date1_confirmed ? 'D1' : p.date2_confirmed ? 'D2' : '—';
+                      const dias = [p.date1_confirmed && 'D1', p.date2_confirmed && 'D2', p.date3_confirmed && 'D3'].filter(Boolean).join(' e ') || '—';
                       return (
                         <div key={p.contact_id} style={{
                           padding: '0.6rem 0', borderBottom: '0.5px dashed #d0cbc2',

@@ -44,14 +44,15 @@ const labelStyle = {
 
 function formatEventDates(event) {
   if (!event?.date) return event?.name || '';
-  const d1 = new Date(event.date + 'T00:00:00');
-  const day1 = d1.getDate();
-  const month1 = d1.toLocaleDateString('pt-BR', { month: 'long' });
-  if (!event.date2) return `${day1} de ${month1}`;
-  const d2 = new Date(event.date2 + 'T00:00:00');
-  const day2 = d2.getDate();
-  const month2 = d2.toLocaleDateString('pt-BR', { month: 'long' });
-  return month1 === month2 ? `${day1} e ${day2} de ${month1}` : `${day1} de ${month1} e ${day2} de ${month2}`;
+  const dates = [event.date, event.date2, event.date3].filter(Boolean)
+    .map(d => new Date(d + 'T00:00:00'));
+  if (dates.length === 1) {
+    return `${dates[0].getDate()} de ${dates[0].toLocaleDateString('pt-BR', { month: 'long' })}`;
+  }
+  const parts = dates.map(d => ({ day: d.getDate(), month: d.toLocaleDateString('pt-BR', { month: 'long' }) }));
+  const allSameMonth = parts.every(p => p.month === parts[0].month);
+  if (allSameMonth) return `${parts.map(p => p.day).join(', ')} de ${parts[0].month}`;
+  return parts.map(p => `${p.day} de ${p.month}`).join(', ');
 }
 
 export default function RegisterInterest() {
@@ -212,14 +213,22 @@ export default function RegisterInterest() {
       }
 
       const interestName = (effectiveName.trim() || 'viajante').split(' ')[0];
-      const daysLabel = participation === 'both' ? 'Dia I e Dia II' : participation === 'day1' ? 'Dia I' : 'Dia II';
+      const daysLabelMap = { both: 'Dia I e Dia II', both_12: 'Dia I e Dia II', both_23: 'Dia II e Dia III', day1: 'Dia I', day2: 'Dia II', day3: 'Dia III' };
+      const daysLabel = daysLabelMap[participation] || participation;
       const enrollLog = [{ at: new Date().toISOString(), by: interestName, msg: `${interestName} manifestou interesse (${daysLabel})` }];
+      const confirmedDays = {
+        both:    { date1_confirmed: true,  date2_confirmed: true,  date3_confirmed: false },
+        both_12: { date1_confirmed: true,  date2_confirmed: true,  date3_confirmed: false },
+        both_23: { date1_confirmed: false, date2_confirmed: true,  date3_confirmed: true  },
+        day1:    { date1_confirmed: true,  date2_confirmed: false, date3_confirmed: false },
+        day2:    { date1_confirmed: false, date2_confirmed: true,  date3_confirmed: false },
+        day3:    { date1_confirmed: false, date2_confirmed: false, date3_confirmed: true  },
+      }[participation] || { date1_confirmed: true, date2_confirmed: false, date3_confirmed: false };
       const insertData = {
         event_id: event.id,
         contact_id: contactId,
         status: 'intenção de ir',
-        date1_confirmed: participation !== 'day2',
-        date2_confirmed: participation !== 'day1',
+        ...confirmedDays,
         remedio_status: 'enviar',
         payment_status: 'em aberto',
         vaga: 'Automático',
@@ -360,15 +369,13 @@ export default function RegisterInterest() {
           </h1>
 
           <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#9a9288', letterSpacing: '0.06em', marginBottom: event.description ? '0.8rem' : '1.5rem' }}>
-            <span style={{ fontWeight: 'bold', color: '#7a7268', marginRight: '4px' }}>Dia I:</span>
-            {event.date ? new Date(event.date + 'T00:00:00').toLocaleDateString('pt-BR') : 'A definir'}
-            {event.date2 && (
-              <>
-                &nbsp;&nbsp;·&nbsp;&nbsp;
-                <span style={{ fontWeight: 'bold', color: '#7a7268', marginRight: '4px' }}>Dia II:</span>
-                {new Date(event.date2 + 'T00:00:00').toLocaleDateString('pt-BR')}
-              </>
-            )}
+            {[['Dia I', event.date], ['Dia II', event.date2], ['Dia III', event.date3]].filter(([, d]) => d).map(([label, d], i) => (
+              <span key={label}>
+                {i > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;</>}
+                <span style={{ fontWeight: 'bold', color: '#7a7268', marginRight: '4px' }}>{label}:</span>
+                {new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')}
+              </span>
+            ))}
           </div>
 
           {event.description && (
@@ -507,11 +514,16 @@ export default function RegisterInterest() {
 
                 {/* Dias */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {[
-                    { value: 'both', label: 'Quero participar.', bold: true, prominent: true },
+                  {(event.date3 ? [
+                    { value: 'both_12', label: 'Quero participar dos dois primeiros dias.', prominent: true },
+                    { value: 'both_23', label: 'Quero participar dos dois últimos dias.', prominent: true },
+                    { value: 'day1', label: 'Quero participar apenas do primeiro dia.' },
+                    { value: 'day3', label: 'Quero participar apenas do último dia.' },
+                  ] : [
+                    { value: 'both', label: 'Quero participar.', prominent: true },
                     { value: 'day1', label: 'Quero participar, mas apenas do primeiro dia.' },
                     ...(event.date2 ? [{ value: 'day2', label: 'Quero participar, mas apenas do segundo dia.' }] : []),
-                  ].map(opt => (
+                  ]).map(opt => (
                     <label key={opt.value} style={{
                       display: 'flex',
                       alignItems: 'center',

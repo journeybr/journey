@@ -56,6 +56,7 @@ function getEnrolledDaysLabel(rows) {
   rows.forEach(row => {
     if (row.date1_confirmed && row.events?.date) days.push(row.events.date);
     if (row.date2_confirmed && row.events?.date2) days.push(row.events.date2);
+    if (row.date3_confirmed && row.events?.date3) days.push(row.events.date3);
   });
   days.sort();
   const fmt = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }));
@@ -282,17 +283,17 @@ export default function PagamentosPage() {
     const [{ data }, { data: contactsData }, { data: transfersData }, { data: orphanPaymentsData }] = await Promise.all([
       supabase
         .from('event_participants')
-        .select('*, contacts(id, name, nickname, phone), events!inner(id, name, date, date2, price_1d, price_2d, active, payment_text)')
+        .select('*, contacts(id, name, nickname, phone), events!inner(id, name, date, date2, date3, price_1d, price_2d, active, payment_text, linked_event_id, disable_auto_pair)')
         .not('status', 'eq', 'desistiu')
         .is('interested_at', null),
       supabase.from('contacts').select('id, name, nickname').order('name'),
       supabase
         .from('payment_transfers')
-        .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,active)')
+        .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,date3,active,linked_event_id,disable_auto_pair)')
         .eq('cancelled', false),
       supabase.from('orphan_payments').select('*').eq('cancelled', false),
     ]);
-    const active = (data || []).filter(p => p.events?.active !== false && (p.date1_confirmed || p.date2_confirmed));
+    const active = (data || []).filter(p => p.events?.active !== false && (p.date1_confirmed || p.date2_confirmed || p.date3_confirmed));
     setParticipants(active);
     setContactsList(contactsData || []);
     setTransfers((transfersData || []).filter(t => t.events?.active !== false));
@@ -316,7 +317,7 @@ export default function PagamentosPage() {
         observation: observation || null,
         log: [logEntry],
       })
-      .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,active)')
+      .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,date3,active,linked_event_id)')
       .single();
     if (!error && data) setTransfers(prev => [...prev, data]);
     setTransferModal(null);
@@ -704,7 +705,7 @@ export default function PagamentosPage() {
         handled.add(k);
         if (!inScope) continue;
         rows = [p];
-        kind = (p.date1_confirmed && p.date2_confirmed) ? '2d' : '1d';
+        kind = [p.date1_confirmed, p.date2_confirmed, p.date3_confirmed].filter(Boolean).length >= 2 ? '2d' : '1d';
         price = soloExpected(p);
       }
       const anchor = rows[0];
@@ -1540,6 +1541,7 @@ export default function PagamentosPage() {
                       participants.filter(x => x.contact_id === paymentModal.contactId).forEach(row => {
                         if (row.date1_confirmed && row.events?.date && row.events.date >= today) days.push(row.events.date);
                         if (row.date2_confirmed && row.events?.date2 && row.events.date2 >= today) days.push(row.events.date2);
+                        if (row.date3_confirmed && row.events?.date3 && row.events.date3 >= today) days.push(row.events.date3);
                       });
                       days.sort();
                       const fmtDays = days.map(d => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' }));

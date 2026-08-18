@@ -150,7 +150,7 @@ export default function Events() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const defaultFichaMessage = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
-  const emptyForm = { name: '', date: '', date2: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', ficha_message: defaultFichaMessage, price_1d: '', price_2d: '' };
+  const emptyForm = { name: '', date: '', date2: '', date3: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', ficha_message: defaultFichaMessage, price_1d: '', price_2d: '', linked_event_id: null, disable_auto_pair: false };
   const [formData, setFormData] = useState(emptyForm);
   const [editFormData, setEditFormData] = useState(emptyForm);
   const [inactiveEvents, setInactiveEvents] = useState([]);
@@ -190,8 +190,11 @@ export default function Events() {
       ...formData,
       date: formData.date || null,
       date2: formData.date2 || null,
+      date3: formData.date3 || null,
       price_1d: formData.price_1d !== '' ? parseFloat(formData.price_1d) : null,
       price_2d: formData.price_2d !== '' ? parseFloat(formData.price_2d) : null,
+      linked_event_id: formData.linked_event_id || null,
+      disable_auto_pair: formData.disable_auto_pair || false,
     };
     const { error } = await supabase.from('events').insert([dataToInsert]);
     if (error) { alert('Erro ao criar cerimônia: ' + error.message); }
@@ -208,8 +211,11 @@ export default function Events() {
       ...editFormData,
       date: editFormData.date || null,
       date2: editFormData.date2 || null,
+      date3: editFormData.date3 || null,
       price_1d: editFormData.price_1d !== '' ? parseFloat(editFormData.price_1d) : null,
       price_2d: editFormData.price_2d !== '' ? parseFloat(editFormData.price_2d) : null,
+      linked_event_id: editFormData.linked_event_id || null,
+      disable_auto_pair: editFormData.disable_auto_pair || false,
     };
     const { error } = await supabase.from('events').update(dataToUpdate).eq('id', editingEvent.id);
     if (error) { alert('Erro ao editar cerimônia: ' + error.message); }
@@ -261,6 +267,7 @@ export default function Events() {
       name: event.name || '',
       date: event.date || '',
       date2: event.date2 || '',
+      date3: event.date3 || '',
       image_url: event.image_url || '',
       invite_message: event.invite_message || '',
       address: event.address || '',
@@ -269,6 +276,8 @@ export default function Events() {
       ficha_message: event.ficha_message || defaultFichaMessage,
       price_1d: event.price_1d != null ? String(event.price_1d) : '',
       price_2d: event.price_2d != null ? String(event.price_2d) : '',
+      linked_event_id: event.linked_event_id || null,
+      disable_auto_pair: event.disable_auto_pair || false,
     });
     setEditingEvent(event);
   }
@@ -336,11 +345,42 @@ export default function Events() {
             Carregando cerimônias...
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '2.5rem' }}>
-            {events.map(event => (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5rem' }}>
+            {(() => {
+              const placed = new Set();
+              const groups = [];
+              for (const ev of events) {
+                if (placed.has(ev.id)) continue;
+                let partner = ev.linked_event_id
+                  ? events.find(e => e.id === ev.linked_event_id && !placed.has(e.id))
+                  : events.find(e => e.linked_event_id === ev.id && !placed.has(e.id));
+                if (!partner && !ev.disable_auto_pair && ev.date) {
+                  partner = events.find(e =>
+                    !placed.has(e.id) &&
+                    e.id !== ev.id &&
+                    !e.linked_event_id &&
+                    !e.disable_auto_pair &&
+                    e.date &&
+                    Math.abs(new Date(e.date) - new Date(ev.date)) <= 29 * 24 * 60 * 60 * 1000
+                  );
+                }
+                if (partner) {
+                  groups.push([ev, partner]);
+                  placed.add(ev.id);
+                  placed.add(partner.id);
+                } else {
+                  groups.push([ev]);
+                  placed.add(ev.id);
+                }
+              }
+              return groups.map((group, gi) => (
+                <div key={gi} style={{ display: 'flex', gap: '2.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                  {group.map(event => (
               <div
                 key={event.id}
                 style={{
+                  flex: group.length === 2 ? '1 1 280px' : '0 0 300px',
+                  maxWidth: group.length === 2 ? 'calc(50% - 1.25rem)' : '360px',
                   position: 'relative',
                   background: '#1c1c1c',
                   borderRadius: '3px 12px 12px 3px',
@@ -403,6 +443,7 @@ export default function Events() {
                   <div style={{ fontSize: '0.75rem', color: '#555', marginBottom: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                     <div><strong>D1:</strong> {event.date ? new Date(event.date).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : 'A definir'}</div>
                     {event.date2 && <div><strong>D2:</strong> {new Date(event.date2).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>}
+                    {event.date3 && <div><strong>D3:</strong> {new Date(event.date3).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}</div>}
                   </div>
 
                   {event.ceremony_status && (
@@ -465,7 +506,10 @@ export default function Events() {
                   </div>
                 </div>
               </div>
-            ))}
+                  ))}
+                </div>
+              ));
+            })()}
             {events.length === 0 && (
               <div style={{ fontFamily: "'Caveat', cursive", fontSize: '18px', color: '#b0a898', fontStyle: 'italic', padding: '2rem 0' }}>
                 Nenhuma cerimônia criada ainda.
@@ -582,6 +626,8 @@ export default function Events() {
           title="Nova Cerimônia"
           submitLabel="Criar Cerimônia"
           copySource={events[0] || null}
+          allEvents={events}
+          currentEventId={null}
         />
       )}
 
@@ -594,6 +640,8 @@ export default function Events() {
           title="Editar Cerimônia"
           submitLabel="Salvar Alterações"
           copySource={events.find(e => e.id !== editingEvent.id) || null}
+          allEvents={events}
+          currentEventId={editingEvent.id}
         />
       )}
     </div>

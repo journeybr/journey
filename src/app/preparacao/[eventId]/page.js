@@ -8,7 +8,9 @@ function getSupabase() {
 }
 
 export async function generateMetadata() {
-  const ogImage = '/preparacao.jpeg';
+  const supabase = getSupabase();
+  const { data: img } = await supabase.from('og_images').select('url').eq('key', 'preparacao').single();
+  const ogImage = img?.url || '/preparacao.jpeg';
   return {
     title: 'Preparação para a Cerimônia',
     description: '',
