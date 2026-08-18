@@ -10,13 +10,14 @@ export async function generateMetadata({ params }) {
     .eq('id', id)
     .single();
 
-  const title = event?.invite_message || 'Journey | Quer participar?';
+  const title = event?.name || 'Journey | Quer participar?';
+  const description = event?.invite_message || '';
 
   return {
     title,
     openGraph: {
       title,
-      description: 'clique aqui',
+      description,
       images: event?.image_url
         ? [{ url: event.image_url, width: 1200, height: 630 }]
         : [],
@@ -24,6 +25,7 @@ export async function generateMetadata({ params }) {
     twitter: {
       card: 'summary_large_image',
       title,
+      description,
       images: event?.image_url ? [event.image_url] : [],
     },
   };
