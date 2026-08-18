@@ -253,7 +253,8 @@ export default function PagamentosPage() {
 
   // Filters
   const [personSearch, setPersonSearch] = useState('');
-  const [selectedCeremony, setSelectedCeremony] = useState('');
+  const [selectedCeremonies, setSelectedCeremonies] = useState([]);
+  const toggleCeremony = id => setSelectedCeremonies(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -628,7 +629,7 @@ export default function PagamentosPage() {
 
   const filtered = useMemo(() => {
     return participants.filter(p => {
-      if (selectedCeremony && p.event_id !== selectedCeremony) return false;
+      if (selectedCeremonies.length > 0 && !selectedCeremonies.includes(p.event_id)) return false;
       if (personSearch) {
         const q = personSearch.toLowerCase();
         const name = (p.contacts?.nickname || p.contacts?.name || '').toLowerCase();
@@ -643,9 +644,9 @@ export default function PagamentosPage() {
       }
       return true;
     });
-  }, [participants, selectedCeremony, personSearch, dateFrom, dateTo]);
+  }, [participants, selectedCeremonies, personSearch, dateFrom, dateTo]);
 
-  const hasFilters = !!selectedCeremony || !!personSearch || !!dateFrom || !!dateTo;
+  const hasFilters = selectedCeremonies.length > 0 || !!personSearch || !!dateFrom || !!dateTo;
 
   // ── Transfer lookups ──────────────────────────────────────────────────────
   const transfersOutMap = useMemo(() => {
@@ -907,7 +908,7 @@ export default function PagamentosPage() {
   }, [orphanTransferEntries, personSearch, dateFrom, dateTo]);
 
   const displayParticipants = useMemo(() => {
-    if (selectedCeremony) return filtered;
+    if (selectedCeremonies.length > 0) return filtered;
     const merged = new Set();
     const result = [];
     for (const p of filtered) {
@@ -935,7 +936,7 @@ export default function PagamentosPage() {
       }
     }
     return result;
-  }, [filtered, selectedCeremony]);
+  }, [filtered, selectedCeremonies]);
 
   const allDisplayEntries = useMemo(() => [...displayParticipants, ...filteredOrphans], [displayParticipants, filteredOrphans]);
 
@@ -1060,16 +1061,11 @@ export default function PagamentosPage() {
           onChange={e => setPersonSearch(e.target.value)}
           style={{ padding: '3px 9px', background: '#fdfbf7', border: personSearch ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', width: '140px', outline: 'none' }}
         />
-        {allCeremonies.length > 0 && (
-          <select
-            value={selectedCeremony}
-            onChange={e => setSelectedCeremony(e.target.value)}
-            style={{ padding: '3px 7px', background: '#fdfbf7', border: selectedCeremony ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: selectedCeremony ? '#3a3530' : '#7a7268', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', outline: 'none', cursor: 'pointer', maxWidth: '180px' }}
-          >
-            <option value="">Todas as cerimônias</option>
-            {allCeremonies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        )}
+        {allCeremonies.map(c => (
+          <button key={c.id} onClick={() => toggleCeremony(c.id)} style={{ padding: '3px 9px', background: selectedCeremonies.includes(c.id) ? '#3a3530' : 'transparent', border: selectedCeremonies.includes(c.id) ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', color: selectedCeremonies.includes(c.id) ? '#f7f4ee' : '#9a9288', transition: 'all 0.15s' }}>
+            {c.name}
+          </button>
+        ))}
         <span style={{ fontSize: '9px', color: '#7a7268', letterSpacing: '0.08em' }}>de</span>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
           style={{ padding: '3px 7px', background: '#fdfbf7', border: dateFrom ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', outline: 'none' }} />
@@ -1077,7 +1073,7 @@ export default function PagamentosPage() {
         <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
           style={{ padding: '3px 7px', background: '#fdfbf7', border: dateTo ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', outline: 'none' }} />
         {hasFilters && (
-          <button onClick={() => { setPersonSearch(''); setSelectedCeremony(''); setDateFrom(''); setDateTo(''); }}
+          <button onClick={() => { setPersonSearch(''); setSelectedCeremonies([]); setDateFrom(''); setDateTo(''); }}
             style={{ padding: '3px 8px', background: 'none', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.08em' }}>
             × limpar
           </button>

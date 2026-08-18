@@ -379,8 +379,8 @@ export default function Events() {
               <div
                 key={event.id}
                 style={{
-                  flex: group.length === 2 ? '1 1 280px' : '0 0 300px',
-                  maxWidth: group.length === 2 ? 'calc(50% - 1.25rem)' : '360px',
+                  flex: '0 0 300px',
+                  maxWidth: '360px',
                   position: 'relative',
                   background: '#1c1c1c',
                   borderRadius: '3px 12px 12px 3px',

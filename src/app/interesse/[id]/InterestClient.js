@@ -368,14 +368,19 @@ export default function RegisterInterest() {
             {event.name}
           </h1>
 
-          <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#9a9288', letterSpacing: '0.06em', marginBottom: event.description ? '0.8rem' : '1.5rem' }}>
-            {[['Dia I', event.date], ['Dia II', event.date2], ['Dia III', event.date3]].filter(([, d]) => d).map(([label, d], i) => (
-              <span key={label}>
-                {i > 0 && <>&nbsp;&nbsp;·&nbsp;&nbsp;</>}
-                <span style={{ fontWeight: 'bold', color: '#7a7268', marginRight: '4px' }}>{label}:</span>
-                {new Date(d + 'T00:00:00').toLocaleDateString('pt-BR')}
-              </span>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', marginBottom: event.description ? '0.8rem' : '1.5rem' }}>
+            {[['Dia 1', event.date], ['Dia 2', event.date2], ['Dia 3', event.date3]].filter(([, d]) => d).map(([label, d]) => {
+              const dt = new Date(d + 'T00:00:00');
+              const weekday = dt.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'UTC' });
+              const dateFmt = dt.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+              return (
+                <div key={label} style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#9a9288', letterSpacing: '0.06em', display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#7a7268', minWidth: '40px' }}>{label}:</span>
+                  <span>{dateFmt}</span>
+                  <span style={{ color: '#b8b2aa', fontSize: '10px' }}>({weekday})</span>
+                </div>
+              );
+            })}
           </div>
 
           {event.description && (
@@ -514,12 +519,16 @@ export default function RegisterInterest() {
 
                 {/* Dias */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                  {(event.date3 ? [
-                    { value: 'both_12', label: 'Quero participar dos dois primeiros dias.', prominent: true },
-                    { value: 'both_23', label: 'Quero participar dos dois últimos dias.', prominent: true },
-                    { value: 'day1', label: 'Quero participar apenas do primeiro dia.' },
-                    { value: 'day3', label: 'Quero participar apenas do último dia.' },
-                  ] : [
+                  {(event.date3 ? (() => {
+                    const fmtD = d => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: 'numeric', timeZone: 'UTC' });
+                    const fmtDM = d => new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: '2-digit', timeZone: 'UTC' });
+                    return [
+                      { value: 'both_12', label: 'Quero participar dos dois primeiros dias.', sublabel: `${fmtD(event.date)} e ${fmtDM(event.date2)}`, prominent: true },
+                      { value: 'both_23', label: 'Quero participar dos dois últimos dias.', sublabel: `${fmtD(event.date2)} e ${fmtDM(event.date3)}`, prominent: true },
+                      { value: 'day1', label: 'Quero participar apenas do primeiro dia.', sublabel: fmtDM(event.date) },
+                      { value: 'day3', label: 'Quero participar apenas do último dia.', sublabel: fmtDM(event.date3) },
+                    ];
+                  })() : [
                     { value: 'both', label: 'Quero participar.', prominent: true },
                     { value: 'day1', label: 'Quero participar, mas apenas do primeiro dia.' },
                     ...(event.date2 ? [{ value: 'day2', label: 'Quero participar, mas apenas do segundo dia.' }] : []),
@@ -546,9 +555,12 @@ export default function RegisterInterest() {
                         value={opt.value}
                         checked={participation === opt.value}
                         onChange={() => setParticipation(opt.value)}
-                        style={{ accentColor: '#3a3530', width: '13px', height: '13px', cursor: 'pointer' }}
+                        style={{ accentColor: '#3a3530', width: '13px', height: '13px', cursor: 'pointer', flexShrink: 0 }}
                       />
-                      {opt.label}
+                      <span>
+                        {opt.label}
+                        {opt.sublabel && <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#aaa49c', letterSpacing: '0.06em', marginLeft: '6px' }}>{opt.sublabel}</span>}
+                      </span>
                     </label>
                   ))}
                 </div>
