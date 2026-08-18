@@ -404,14 +404,12 @@ export default function RegisterInterest() {
                   </>
                 ) : (
                   <>
-                    Obrigado pelo interesse de caminhar conosco em {formatEventDates(event)}.<br />
-                    Vamos entrar em contato em breve para os próximos passos.
+                    Obrigado pelo interesse de caminhar conosco.<br /><br />
+                    Vamos entrar em contato com você em breve para confirmar sua vaga e falar sobre os próximos passos.<br /><br />
+                    Até breve!
                   </>
                 )}
               </p>
-              <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#b0a898', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                até breve · journey
-              </div>
             </div>
           ) : event?.ceremony_status === 'fechada' ? (
             <div style={{ padding: '1.5rem 0', textAlign: 'center' }}>
