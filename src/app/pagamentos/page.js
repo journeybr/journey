@@ -637,7 +637,6 @@ export default function PagamentosPage() {
 
   const filtered = useMemo(() => {
     return participants.filter(p => {
-      if (selectedCeremonies.length > 0 && !selectedCeremonies.includes(p.event_id)) return false;
       if (personSearch) {
         const q = personSearch.toLowerCase();
         const name = (p.contacts?.nickname || p.contacts?.name || '').toLowerCase();
@@ -652,7 +651,7 @@ export default function PagamentosPage() {
       }
       return true;
     });
-  }, [participants, selectedCeremonies, personSearch, dateFrom, dateTo]);
+  }, [participants, personSearch, dateFrom, dateTo]);
 
   const hasFilters = selectedCeremonies.length > 0 || !!personSearch || !!dateFrom || !!dateTo;
 
@@ -916,7 +915,6 @@ export default function PagamentosPage() {
   }, [orphanTransferEntries, personSearch, dateFrom, dateTo]);
 
   const displayParticipants = useMemo(() => {
-    if (selectedCeremonies.length > 0) return filtered;
     const merged = new Set();
     const result = [];
     for (const p of filtered) {
@@ -943,7 +941,11 @@ export default function PagamentosPage() {
         result.push(p);
       }
     }
-    return result;
+    if (selectedCeremonies.length === 0) return result;
+    return result.filter(p => {
+      const ids = p._merged ? [p.event_id, p._secondary.event_id] : [p.event_id];
+      return ids.some(id => selectedCeremonies.includes(id));
+    });
   }, [filtered, selectedCeremonies]);
 
   const allDisplayEntries = useMemo(() => [...displayParticipants, ...filteredOrphans], [displayParticipants, filteredOrphans]);
