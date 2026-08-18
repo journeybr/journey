@@ -255,6 +255,8 @@ export default function PagamentosPage() {
   const [personSearch, setPersonSearch] = useState('');
   const [selectedCeremonies, setSelectedCeremonies] = useState([]);
   const toggleCeremony = id => setSelectedCeremonies(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const [ceremoniesOpen, setCeremoniesOpen] = useState(false);
+  const ceremoniesRef = useRef(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -268,6 +270,12 @@ export default function PagamentosPage() {
   }, []);
 
   useEffect(() => { checkUser(); }, []);
+  useEffect(() => {
+    if (!ceremoniesOpen) return;
+    const handler = e => { if (ceremoniesRef.current && !ceremoniesRef.current.contains(e.target)) setCeremoniesOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [ceremoniesOpen]);
 
   async function checkUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1061,11 +1069,41 @@ export default function PagamentosPage() {
           onChange={e => setPersonSearch(e.target.value)}
           style={{ padding: '3px 9px', background: '#fdfbf7', border: personSearch ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', width: '140px', outline: 'none' }}
         />
-        {allCeremonies.map(c => (
-          <button key={c.id} onClick={() => toggleCeremony(c.id)} style={{ padding: '3px 9px', background: selectedCeremonies.includes(c.id) ? '#3a3530' : 'transparent', border: selectedCeremonies.includes(c.id) ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', color: selectedCeremonies.includes(c.id) ? '#f7f4ee' : '#9a9288', transition: 'all 0.15s' }}>
-            {c.name}
-          </button>
-        ))}
+        {allCeremonies.length > 0 && (
+          <div ref={ceremoniesRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setCeremoniesOpen(o => !o)}
+              style={{ padding: '3px 9px', background: selectedCeremonies.length > 0 ? '#3a3530' : 'transparent', border: selectedCeremonies.length > 0 ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.06em', color: selectedCeremonies.length > 0 ? '#f7f4ee' : '#9a9288', transition: 'all 0.15s' }}
+            >
+              {selectedCeremonies.length === 0 ? 'Cerimônias ▾' : `${selectedCeremonies.length} selecionada${selectedCeremonies.length > 1 ? 's' : ''} ▾`}
+            </button>
+            {ceremoniesOpen && (
+              <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, background: '#fdfbf7', border: '0.5px solid #c8c2b8', borderRadius: '2px', boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 200, minWidth: '200px', padding: '4px 0' }}>
+                {allCeremonies.map(c => (
+                  <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#3a3530', letterSpacing: '0.04em' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f0ede8'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedCeremonies.includes(c.id)}
+                      onChange={() => toggleCeremony(c.id)}
+                      style={{ accentColor: '#3a3530', width: '12px', height: '12px', cursor: 'pointer', flexShrink: 0 }}
+                    />
+                    {c.name}
+                  </label>
+                ))}
+                {selectedCeremonies.length > 0 && (
+                  <div style={{ borderTop: '0.5px solid #e0d8ce', margin: '4px 0 0' }}>
+                    <button onClick={() => { setSelectedCeremonies([]); setCeremoniesOpen(false); }} style={{ width: '100%', padding: '6px 12px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#9a9288', letterSpacing: '0.08em', textAlign: 'left' }}>
+                      × limpar seleção
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <span style={{ fontSize: '9px', color: '#7a7268', letterSpacing: '0.08em' }}>de</span>
         <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
           style={{ padding: '3px 7px', background: '#fdfbf7', border: dateFrom ? '0.5px solid #3a3530' : '0.5px dashed #c8c2b8', borderRadius: '2px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontSize: '9px', outline: 'none' }} />
