@@ -10,7 +10,7 @@ export async function generateMetadata({ params }) {
     .eq('id', id)
     .single();
 
-  const title = 'Manifestar interesse';
+  const title = event?.invite_message || 'Journey | Quer participar?';
 
   return {
     title,
