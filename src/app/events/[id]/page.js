@@ -1141,28 +1141,8 @@ export default function EventDetail({ params }) {
     const field = fields[day - 1];
     const dayLabel = ['Dia I', 'Dia II', 'Dia III'][day - 1];
     const p = participants.find(x => x.contact_id === contactId);
-    if (hasThreeDates) {
-      const d1 = p?.date1_confirmed ?? false;
-      const d2 = p?.date2_confirmed ?? false;
-      const d3 = p?.date3_confirmed ?? false;
-      const next = { d1, d2, d3, [['d1','d2','d3'][day-1]]: !currentStatus };
-      const count = [next.d1, next.d2, next.d3].filter(Boolean).length;
-      if (count > 2) {
-        alert('Máximo de 2 dias por cerimônia. Remove um dia antes de adicionar outro.');
-        return;
-      }
-      // D2 sozinho não é válido (é o dia do meio, não uma meia cerimônia)
-      if (next.d2 && !next.d1 && !next.d3) {
-        alert('Dia II sozinho não é válido. Escolha D1+D2 ou D2+D3 para cerimônia completa, ou D1/D3 para meia cerimônia.');
-        return;
-      }
-      // D1+D3 sem D2 não é válido (dias de ponta sem o meio)
-      if (next.d1 && next.d3 && !next.d2) {
-        alert('Não é possível confirmar D1 e D3 sem D2. Escolha D1+D2 ou D2+D3.');
-        return;
-      }
-    } else if (!currentStatus) {
-      const confirmed = [p?.date1_confirmed, p?.date2_confirmed].filter(Boolean).length;
+    if (!currentStatus) {
+      const confirmed = [p?.date1_confirmed, p?.date2_confirmed, p?.date3_confirmed].filter(Boolean).length;
       if (confirmed >= 2) {
         alert('Máximo de 2 dias por cerimônia. Remove um dia antes de adicionar outro.');
         return;
@@ -1809,6 +1789,9 @@ export default function EventDetail({ params }) {
 
   const hasTwoDates = !!event.date2;
   const hasThreeDates = !!event.date3;
+  const colTemplate = hasThreeDates
+    ? '160px 100px 58px 58px 98px 100px 38px 38px 58px'
+    : '160px 70px 58px 58px 98px 100px 38px 38px 58px';
 
   const remedioOptions = [
     { value: 'enviar', label: 'Enviar', icon: '✉️', color: '#bbb' },
@@ -1854,7 +1837,7 @@ export default function EventDetail({ params }) {
     const badgeText = computeVagaBadge(p, getEffectiveStatus(p).effectiveStatus);
 
     return (
-      <div key={p.contact_id} style={{ ...s.row, opacity: rowOpacity }}>
+      <div key={p.contact_id} style={{ ...s.row, gridTemplateColumns: colTemplate, opacity: rowOpacity }}>
         {/* Nome + nome completo */}
         <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer' }}>
           <div style={{ ...s.travelerName }}>
@@ -2371,7 +2354,7 @@ export default function EventDetail({ params }) {
                   <div style={s.sectionTitle}>◌ Interessados ({interessados.length})</div>
                 </div>
                 <div>
-                  <div style={s.tableHeader}>
+                  <div style={{ ...s.tableHeader, gridTemplateColumns: colTemplate }}>
                     <div>participante</div><div>dias</div><div>vaga</div>
                     <div style={{ textAlign: 'center' }}>remédio</div>
                     <div style={{ gridColumn: '5 / 9', textAlign: 'center' }}>dia do interesse</div>
@@ -2386,7 +2369,7 @@ export default function EventDetail({ params }) {
                         timeZone: 'America/Sao_Paulo',
                       });
                       return (
-                        <div key={p.contact_id} style={s.row}>
+                        <div key={p.contact_id} style={{ ...s.row, gridTemplateColumns: colTemplate }}>
                           {/* Nome */}
                           <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer' }}>
                             <div style={s.travelerName}>
@@ -2515,7 +2498,7 @@ export default function EventDetail({ params }) {
                   <div style={{ marginBottom: '2rem' }}>{filtered.map(p => renderParticipantCard(p, false))}</div>
                 ) : (
                   <div style={{ marginBottom: '2.5rem' }}>
-                    <div style={s.tableHeader}>
+                    <div style={{ ...s.tableHeader, gridTemplateColumns: colTemplate }}>
                       <div>participante</div><div>dias</div><div>vaga</div>
                       <div style={{ textAlign: 'center' }}>remédio</div>
                       <div style={{ textAlign: 'center' }}>pago</div><div style={{ textAlign: 'center' }}>status</div>
@@ -2550,7 +2533,7 @@ export default function EventDetail({ params }) {
                   <div style={{ marginBottom: '2rem' }}>{filtered.map(p => renderParticipantCard(p, true))}</div>
                 ) : (
                   <div style={{ marginBottom: '2.5rem' }}>
-                    <div style={s.tableHeader}>
+                    <div style={{ ...s.tableHeader, gridTemplateColumns: colTemplate }}>
                       <div>participante</div><div>dias</div><div>vaga</div>
                       <div style={{ textAlign: 'center' }}>remédio</div>
                       <div style={{ textAlign: 'center' }}>pago</div><div style={{ textAlign: 'center' }}>status</div>
