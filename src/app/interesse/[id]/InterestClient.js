@@ -557,10 +557,12 @@ export default function RegisterInterest() {
                         onChange={() => setParticipation(opt.value)}
                         style={{ accentColor: '#3a3530', width: '13px', height: '13px', cursor: 'pointer', flexShrink: 0 }}
                       />
-                      <span>
-                        {opt.label}
-                        {opt.sublabel && <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#aaa49c', letterSpacing: '0.06em', marginLeft: '6px' }}>{opt.sublabel}</span>}
-                      </span>
+                      <span style={{ flex: 1 }}>{opt.label}</span>
+                      {opt.sublabel && (
+                        <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#7a7268', letterSpacing: '0.06em', background: '#ede9e0', padding: '2px 7px', borderRadius: '2px', flexShrink: 0 }}>
+                          {opt.sublabel}
+                        </span>
+                      )}
                     </label>
                   ))}
                 </div>

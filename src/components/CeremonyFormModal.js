@@ -125,17 +125,17 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
             <label style={modalLabelStyle}>Nome da Cerimônia</label>
             <input type="text" required value={data.name} onChange={e => setData({ ...data, name: e.target.value })} placeholder="Ex: Cerimônia da Primavera" style={modalInputStyle} />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1.2rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem', marginBottom: '1.2rem', alignItems: 'end' }}>
             <div>
-              <label style={modalLabelStyle}>Data 1 (Obrigatória)</label>
+              <label style={modalLabelStyle}>Data 1 <span style={{ color: '#c8a0a0' }}>*</span></label>
               <input type="date" required value={data.date} onChange={e => setData({ ...data, date: e.target.value })} style={modalInputStyle} />
             </div>
             <div>
-              <label style={modalLabelStyle}>Data 2 (Opcional)</label>
+              <label style={modalLabelStyle}>Data 2</label>
               <input type="date" value={data.date2 || ''} onChange={e => setData({ ...data, date2: e.target.value })} style={modalInputStyle} />
             </div>
             <div>
-              <label style={modalLabelStyle}>Data 3 (Opcional)</label>
+              <label style={modalLabelStyle}>Data 3</label>
               <input type="date" value={data.date3 || ''} onChange={e => setData({ ...data, date3: e.target.value })} style={modalInputStyle} />
             </div>
           </div>
