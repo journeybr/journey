@@ -744,7 +744,8 @@ export default function PagamentosPage() {
       // pagamento vêm de AMBAS as linhas. Se ela pagou para cada cerimônia individualmente,
       // o paidSoFar pode exceder o total do pacote. Capeia para não inflar o TOTAL A RECEBER.
       const resumoPaid = total != null ? Math.min(paidSoFar, Math.max(0, total)) : paidSoFar;
-      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, resumoPaid, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus: 'em aberto', _isPagoPortion: isPagoPortion, _outTransfers: outTransfers, methods });
+      const _excess = price != null ? Math.max(0, sumOut + discount - price) : 0;
+      groups.push({ contactId: anchor.contact_id, name, kind, price, discount, paidSoFar, resumoPaid, pledgedLocal, owedAberto, owed: owedAberto, effectiveStatus: 'em aberto', _isPagoPortion: isPagoPortion, _outTransfers: outTransfers, _sumOut: sumOut, _excess, methods });
     }
     // Second pass: sub-payer is only "pago" when their consolidator's balance is zero.
     const owedMap = Object.fromEntries(groups.map(g => [g.contactId, g.owedAberto]));
@@ -770,9 +771,17 @@ export default function PagamentosPage() {
   // transferência cujo event_id esteja no escopo selecionado entra aqui, ponto.
   const transferIncomingEntries = useMemo(() => {
     if (resumoCeremonies.size === 0) return [];
+    // Só conta transferências cujo remetente é participante de uma cerimônia no escopo —
+    // garante simetria com o sumOut de resumoGroups (que também filtra por contactIds do escopo).
+    // Transferências de fora do escopo (remetente não participa de nenhuma cerimônia selecionada)
+    // não têm sumOut correspondente e inflariam o TOTAL A RECEBER sem reduzir o TOTAL COBRADO.
+    const scopeContactIds = new Set(
+      participants.filter(p => resumoCeremonies.has(p.event_id)).map(p => p.contact_id)
+    );
     const byRecipient = {};
     transfers.forEach(t => {
       if (!resumoCeremonies.has(t.event_id)) return;
+      if (!scopeContactIds.has(t.from_contact_id)) return;
       const key = t.to_contact_id;
       if (!byRecipient[key]) byRecipient[key] = { contactId: key, name: t.to_contact?.nickname || t.to_contact?.name || '—', transfersList: [] };
       byRecipient[key].transfersList.push(t);
@@ -783,7 +792,7 @@ export default function PagamentosPage() {
       const noLocal = g.transfersList.filter(t => t.status === 'a pagar no local').reduce((s, t) => s + Number(t.amount), 0);
       return { ...g, total, paid, noLocal, pending: total - paid - noLocal };
     });
-  }, [transfers, resumoCeremonies]);
+  }, [transfers, resumoCeremonies, participants]);
 
   const resumoSummary = useMemo(() => {
     const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR');
@@ -824,6 +833,7 @@ export default function PagamentosPage() {
       .filter(m => methodNames[m]?.size > 0)
       .map(m => ({ label: m, names: [...methodNames[m]].sort((a, b) => a.localeCompare(b, 'pt-BR')) }));
 
+    const inconsistencias = resumoGroups.filter(g => g._excess > 0).sort(byName);
     return {
       twoDay: { groups: twoDay, price: twoDay[0]?.price ?? null, total: sumPrice(twoDay) },
       oneDay: { groups: oneDay, price: oneDay[0]?.price ?? null, total: sumPrice(oneDay) },
@@ -831,6 +841,7 @@ export default function PagamentosPage() {
       totalCobrado,
       aPagar, noLocal, pago, pagoCategories,
       totalAReceber: aPagar.total + noLocal.total + pago.total,
+      inconsistencias,
     };
   }, [resumoGroups, transferIncomingEntries]);
 
@@ -1744,7 +1755,6 @@ export default function PagamentosPage() {
                   <ResumoMetric label="Descontos concedidos" showAmountPer="discount"
                     count={resumoSummary.discounted.groups.length} total={resumoSummary.discounted.total} groups={resumoSummary.discounted.groups}
                     expandKey="desc" expanded={resumoExpanded} onToggle={toggleResumoExpanded} color="#8a7a58" />
-
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '0.7rem 0', marginTop: '0.4rem', borderTop: '0.5px solid #3a3530' }}>
                     <span style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#3a3530', fontWeight: 'bold' }}>Total cobrado</span>
                     <span style={{ fontSize: '15px', color: '#3a3530', fontFamily: "'Courier Prime', monospace", fontWeight: 'bold' }}>$ {resumoSummary.totalCobrado.toFixed(2)}</span>
@@ -1769,6 +1779,20 @@ export default function PagamentosPage() {
                       $ {resumoSummary.totalAReceber.toFixed(2)}
                     </span>
                   </div>
+
+                  {resumoSummary.inconsistencias.length > 0 && (
+                    <div style={{ marginTop: '0.6rem', padding: '0.7rem 0.9rem', background: '#fef8ec', border: '0.5px solid #e8c97a', borderRadius: '2px' }}>
+                      <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#b07a20', fontWeight: 'bold', marginBottom: '0.4rem' }}>
+                        ⚠ Transferiu mais do que o preço cobrado
+                      </div>
+                      {resumoSummary.inconsistencias.map(g => (
+                        <div key={g.contactId} style={{ fontSize: '10px', color: '#7a5a20', fontFamily: "'Courier Prime', monospace", display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '1px 0' }}>
+                          <span>{g.name}</span>
+                          <span style={{ flexShrink: 0 }}>transferiu ${g._sumOut.toFixed(2)} · cobrado ${g.price.toFixed(2)} · excesso +${g._excess.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </>
               )}
             </div>
