@@ -595,6 +595,24 @@ function computeFichaAlerts(contact) {
   return { redFlags, hasMeds, medsList, outros, unchecked };
 }
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+function calcAge(dobStr) {
+  if (!dobStr) return null;
+  let birth;
+  if (String(dobStr).includes('/')) {
+    const [d, m, y] = String(dobStr).split('/');
+    birth = new Date(Number(y), Number(m) - 1, Number(d));
+  } else {
+    birth = new Date(dobStr);
+  }
+  if (isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
+  return age;
+}
+
 function computeEffectiveRemedioStatus(p) {
   if (p.remedio_status === 'Ok Manual') return 'Ok Manual';
   if (p.remedio_status === 'Acompanhar') return 'Acompanhar';
@@ -604,6 +622,7 @@ function computeEffectiveRemedioStatus(p) {
     if (p.remedio_status === 'enviado') return 'enviado';
     return 'enviar';
   }
+  if (p._fichaLastCompletedAt && Date.now() - new Date(p._fichaLastCompletedAt).getTime() > THIRTY_DAYS_MS) return 'expirada';
   if (r === 'não') return 'Ok';
   return 'preenchido';
 }
@@ -661,6 +680,8 @@ function computeVagaBadge(p, effectivePaymentStatus) {
 function MedBadge({ status }) {
   if (status === 'Ok' || status === 'Ok Manual')
     return <span style={s.medConfirmed}>✓ confirmado</span>;
+  if (status === 'expirada')
+    return <span style={{ ...s.medSent, color: '#c4892a' }}>↺ expirada</span>;
   if (status === 'enviado' || status === 'preenchido')
     return <span style={s.medSent}>✉ enviado</span>;
   return <span style={s.medSent}>— pendente</span>;
@@ -754,6 +775,7 @@ export default function EventDetail({ params }) {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedContactIds, setSelectedContactIds] = useState(new Set());
   const [remedioModal, setRemedioModal] = useState(null);
+  const [remedioModalHistory, setRemedioModalHistory] = useState([]);
   const [activeFichaContact, setActiveFichaContact] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
   const [dayFilter, setDayFilter] = useState(null);
@@ -954,6 +976,17 @@ export default function EventDetail({ params }) {
     }
   }, [eventId]);
 
+  async function openRemedioModal(contactId, contact) {
+    setRemedioModal({ contactId, contact });
+    setRemedioModalHistory([]);
+    const { data } = await supabase
+      .from('medical_records')
+      .select('*')
+      .eq('contact_id', contactId)
+      .order('created_at', { ascending: false });
+    setRemedioModalHistory(data || []);
+  }
+
   async function fetchEventData() {
     setLoading(true);
 
@@ -978,7 +1011,22 @@ export default function EventDetail({ params }) {
       .select('*, contacts(*)')
       .eq('event_id', eventId);
       
-    if (partData) setParticipants(partData);
+    if (partData && partData.length > 0) {
+      const contactIds = partData.map(p => p.contact_id).filter(Boolean);
+      const { data: medRecords } = await supabase
+        .from('medical_records')
+        .select('contact_id, created_at, medical_form_step')
+        .in('contact_id', contactIds)
+        .gte('medical_form_step', 6)
+        .order('created_at', { ascending: false });
+      const fichaCompletedAtMap = {};
+      (medRecords || []).forEach(r => {
+        if (!fichaCompletedAtMap[r.contact_id]) fichaCompletedAtMap[r.contact_id] = r.created_at;
+      });
+      setParticipants(partData.map(p => ({ ...p, _fichaLastCompletedAt: fichaCompletedAtMap[p.contact_id] || null })));
+    } else {
+      setParticipants(partData || []);
+    }
 
     // Cross-ceremony pricing: find contacts with days in other active ceremonies within 29 days
     if (partData && partData.length > 0 && eventData) {
@@ -1022,6 +1070,19 @@ export default function EventDetail({ params }) {
           }
         });
       setCrossCeremonyExpected(crossMap);
+
+      // Auto-corrigir primeira_vez: participante com cerimônia confirmada anterior não é mais de primeira vez.
+      const today = new Date().toISOString().split('T')[0];
+      const primeiraVezIds = (partData || []).filter(p => p.contacts?.primeira_vez).map(p => p.contact_id);
+      const toReset = primeiraVezIds.filter(cid =>
+        (otherParts || []).some(op => op.contact_id === cid && op.events?.date && op.events.date < today)
+      );
+      if (toReset.length > 0) {
+        await supabase.from('contacts').update({ primeira_vez: false }).in('id', toReset);
+        setParticipants(prev => prev.map(p =>
+          toReset.includes(p.contact_id) ? { ...p, contacts: { ...p.contacts, primeira_vez: false } } : p
+        ));
+      }
     }
 
     const { data: contactsData } = await supabase.from('contacts').select('id, name, nickname, nome_completo, phone').order('nickname');
@@ -1969,7 +2030,7 @@ export default function EventDetail({ params }) {
         {!isSimplified && hasRemedioAccess ? (
           <div
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })}
+            onClick={() => openRemedioModal(p.contact_id, p.contacts)}
           >
             <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
           </div>
@@ -2125,7 +2186,7 @@ export default function EventDetail({ params }) {
               <span title="Mover para Interessados" onClick={() => moverParaInteressados(p.contact_id)} style={{ cursor: 'pointer', color: '#c8c2b8', fontSize: '12px', userSelect: 'none' }}>↑</span>
             )}
             {!isSimplified && hasRemedioAccess && (
-              <span onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span onClick={() => openRemedioModal(p.contact_id, p.contacts)} style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                 <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
               </span>
             )}
@@ -2436,7 +2497,7 @@ export default function EventDetail({ params }) {
                           {/* Remédio */}
                           <div
                             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-                            onClick={() => setRemedioModal({ contactId: p.contact_id, contact: p.contacts })}
+                            onClick={() => openRemedioModal(p.contact_id, p.contacts)}
                           >
                             <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
                           </div>
@@ -2740,9 +2801,9 @@ export default function EventDetail({ params }) {
         const rIsAcomp = rStatus === 'Acompanhar';
         const hasFicha = !!(rContact?.medical_form_data || rContact?.medical_form_step > 0);
         const btnBase = { width: '100%', padding: '10px 12px', background: 'transparent', border: '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: '#3a3530', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' };
-        const pillStatus = rIsOk ? 'ok' : rIsAcomp ? 'warn' : rStatus === 'preenchido' ? 'attention' : 'pending';
-        const headerColor = rIsOk ? '#5d9470' : rIsAcomp ? '#e0a820' : '#c0392b';
-        const statusLabel = rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Definido como Ok' : rStatus === 'Acompanhar' ? 'Definido para acompanhar' : rStatus === 'preenchido' ? 'Ficha preenchida' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento';
+        const pillStatus = rIsOk ? 'ok' : rIsAcomp ? 'warn' : rStatus === 'preenchido' ? 'attention' : rStatus === 'expirada' ? 'warn' : 'pending';
+        const headerColor = rIsOk ? '#5d9470' : rIsAcomp ? '#e0a820' : rStatus === 'expirada' ? '#c4892a' : '#c0392b';
+        const statusLabel = rStatus === 'Ok' ? 'Ficha preenchida' : rStatus === 'Ok Manual' ? 'Definido como Ok' : rStatus === 'Acompanhar' ? 'Definido para acompanhar' : rStatus === 'preenchido' ? 'Ficha preenchida' : rStatus === 'expirada' ? 'Ficha expirada — mais de 30 dias' : rStatus === 'enviado' ? 'Link enviado — aguardando preenchimento' : 'Pendente de preenchimento';
         return (
           <div
             onClick={() => setRemedioModal(null)}
@@ -2756,18 +2817,31 @@ export default function EventDetail({ params }) {
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>
                   {rContact?.nickname || rContact?.name}
                 </div>
+                {rContact?.medical_form_data?.data_nascimento && (() => {
+                  const age = calcAge(rContact.medical_form_data.data_nascimento);
+                  return age != null ? (
+                    <div style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#5a5048', marginTop: '0.15rem' }}>
+                      {age} anos
+                    </div>
+                  ) : null;
+                })()}
                 <div style={{ fontSize: '10px', color: headerColor, marginTop: '0.3rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <PillIcon status={pillStatus} />
                   {statusLabel}
                 </div>
               </div>
 
-              {/* Resumo ficha */}
-              {hasFicha && (() => {
+              {/* Resumo ficha — só aparece se a ficha for vigente (não expirada) */}
+              {hasFicha && rStatus !== 'expirada' && (() => {
                 const alerts = computeFichaAlerts(rContact);
                 if (!alerts) return null;
                 const { redFlags, hasMeds, medsList, outros, unchecked } = alerts;
-                const hasAnything = redFlags.length > 0 || hasMeds || unchecked.length > 0;
+                // Itens não marcados só são relevantes quando a pessoa começou a preencher
+                // nesta cerimônia. Se ainda não abriu ('enviar'/'enviado'), o dado é de outra
+                // cerimônia e não reflete a situação atual.
+                const fichaEmAndamento = rStatus !== 'enviar' && rStatus !== 'enviado';
+                const showUnchecked = fichaEmAndamento && unchecked.length > 0;
+                const hasAnything = redFlags.length > 0 || hasMeds || showUnchecked;
                 if (!hasAnything) return null;
                 return (
                   <div style={{ padding: '0.75rem 1.5rem', borderBottom: '0.5px solid #d0cbc2', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
@@ -2787,14 +2861,14 @@ export default function EventDetail({ params }) {
                         </div>
                       </div>
                     )}
-                    {unchecked.length > 0 && (
+                    {showUnchecked && (
                       <div style={{ fontSize: '10px', color: '#9a9288', lineHeight: 1.4 }}>
                         {unchecked.length <= 2 ? (<>
                           <div style={{ fontWeight: 700, color: '#7a7268', marginBottom: '2px' }}>✗ Não marcado</div>
                           {unchecked.map((u, i) => <div key={i}>• {u}</div>)}
                         </>) : (
                           <button
-                            onClick={() => { setActiveFichaContact(rContact); setRemedioModal(null); }}
+                            onClick={() => { setActiveFichaContact({ ...rContact, _fichaLastCompletedAt: rp._fichaLastCompletedAt }); setRemedioModal(null); }}
                             style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#7a7268', textAlign: 'left', textDecoration: 'underline', lineHeight: 1.4 }}
                           >
                             ✗ {unchecked.length} itens não marcados — ver ficha de triagem
@@ -2805,6 +2879,33 @@ export default function EventDetail({ params }) {
                   </div>
                 );
               })()}
+
+              {/* Histórico de Fichas */}
+              {remedioModalHistory.length > 0 && (
+                <div style={{ padding: '0.75rem 1.5rem', borderBottom: '0.5px solid #d0cbc2' }}>
+                  <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Histórico</div>
+                  {remedioModalHistory.map(rec => {
+                    const complete = rec.medical_form_step >= 6;
+                    const expired = complete && Date.now() - new Date(rec.created_at).getTime() > THIRTY_DAYS_MS;
+                    const dateStr = new Date(rec.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    return (
+                      <div
+                        key={rec.id}
+                        onClick={complete ? () => {
+                          setActiveFichaContact({ ...rContact, medical_form_data: rec.medical_form_data, medications_list: rec.medications_list, medical_form_step: rec.medical_form_step, _historical_at: rec.created_at });
+                          setRemedioModal(null);
+                        } : undefined}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderBottom: '0.5px dashed #e8e2da', cursor: complete ? 'pointer' : 'default' }}
+                      >
+                        <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#3a3530' }}>{dateStr}</span>
+                        <span style={{ fontSize: '9px', color: expired ? '#c4892a' : complete ? '#4a7a5a' : '#9a9288' }}>
+                          {expired ? '↺ expirada' : complete ? '✓ completa' : `incompleta · passo ${rec.medical_form_step || 0}`}{complete ? ' →' : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Ações */}
               <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -2850,7 +2951,7 @@ export default function EventDetail({ params }) {
                 </button>
                 {hasFicha && (
                   <button
-                    onClick={() => { setActiveFichaContact(rContact); setRemedioModal(null); }}
+                    onClick={() => { setActiveFichaContact({ ...rContact, _fichaLastCompletedAt: rp._fichaLastCompletedAt }); setRemedioModal(null); }}
                     style={{ ...btnBase }}
                   >
                     <EyeIcon /> Ver ficha de triagem
@@ -3682,6 +3783,17 @@ export default function EventDetail({ params }) {
               <div style={{ padding: '1.5rem 2rem 1rem', borderBottom: '0.5px solid #d0cbc2', position: 'sticky', top: 0, background: '#fdfbf7', zIndex: 1 }}>
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '11px', letterSpacing: '0.08em', color: '#aaa49c', textTransform: 'uppercase', marginBottom: '0.2rem' }}>Ficha Médica</div>
                 <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '26px', fontWeight: 400, color: '#3a3530', lineHeight: 1.1 }}>{activeFichaContact.name}</div>
+                {(() => {
+                  const dateAt = activeFichaContact._historical_at || activeFichaContact._fichaLastCompletedAt;
+                  if (!dateAt) return null;
+                  const label = new Date(dateAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+                  return (
+                    <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#5a5048' }}>Preenchida em {label}</span>
+                      {activeFichaContact._historical_at && <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#c4892a', letterSpacing: '0.06em' }}>· versão histórica</span>}
+                    </div>
+                  );
+                })()}
                 {hasConcerns && <div style={{ marginTop: '0.5rem', fontSize: '10px', color: '#b45309', fontWeight: 'bold' }}>⚠ Itens em atenção marcados em laranja abaixo</div>}
               </div>
 
@@ -3690,7 +3802,7 @@ export default function EventDetail({ params }) {
 
                 {/* Status */}
                 <div style={{ padding: '0.6rem 0.9rem', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontSize: '10px' }}>
-                  {activeFichaContact.remedio === 'não' || activeFichaContact.remedio === 'em andamento'
+                  {activeFichaContact._historical_at || activeFichaContact.remedio === 'não' || activeFichaContact.remedio === 'em andamento'
                     ? <span style={{ color: '#5d9470', fontWeight: 'bold' }}>✓ Formulário concluído e assinado</span>
                     : activeFichaContact.medical_form_step > 0
                       ? <span style={{ color: '#8a7a58', fontWeight: 'bold' }}>⏳ Incompleto — parou no passo {activeFichaContact.medical_form_step} de 8</span>
@@ -3704,7 +3816,7 @@ export default function EventDetail({ params }) {
                     <div style={sL}>Dados Pessoais</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.3rem 1rem', fontSize: '10px', padding: '0.6rem 0.9rem', background: '#faf7f0', border: '0.5px solid #c8c2b8', borderRadius: '2px' }}>
                       {mfd.nome_completo && <div><span style={{ color: '#aaa49c' }}>Nome: </span>{mfd.nome_completo}</div>}
-                      {mfd.data_nascimento && <div><span style={{ color: '#aaa49c' }}>Nascimento: </span>{mfd.data_nascimento}</div>}
+                      {mfd.data_nascimento && <div><span style={{ color: '#aaa49c' }}>Nascimento: </span>{mfd.data_nascimento}{calcAge(mfd.data_nascimento) != null && <span style={{ color: '#7a7268', marginLeft: '6px' }}>({calcAge(mfd.data_nascimento)} anos)</span>}</div>}
                       {mfd.telefone && <div><span style={{ color: '#aaa49c' }}>Tel: </span>{mfd.telefone_ddi || ''} {mfd.telefone}</div>}
                       {mfd.contato_emergencia && <div><span style={{ color: '#aaa49c' }}>Emergência: </span>{mfd.contato_emergencia}</div>}
                     </div>
@@ -3773,20 +3885,22 @@ export default function EventDetail({ params }) {
 
               {/* Footer com botões */}
               <div style={{ padding: '1rem 2rem 1.5rem', borderTop: '0.5px solid #d0cbc2', display: 'flex', gap: '0.7rem', flexWrap: 'wrap' }}>
-                <button
-                  onClick={() => {
-                    const cleanPhone = activeFichaContact.phone?.replace(/\D/g, '') || '';
-                    if (!cleanPhone) { alert('Este viajante não tem telefone cadastrado.'); return; }
-                    const publicLink = `${window.location.origin}/ficha?id=${activeFichaContact.id}`;
-                    const firstName = (activeFichaContact.nickname || activeFichaContact.name || '').split(' ')[0] || '';
-                    const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
-                    const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);
-                    window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
-                  }}
-                  style={{ ...s.btn, flex: '1 1 100px', justifyContent: 'center' }}
-                >📱 WhatsApp</button>
+                {!activeFichaContact._historical_at && (
+                  <button
+                    onClick={() => {
+                      const cleanPhone = activeFichaContact.phone?.replace(/\D/g, '') || '';
+                      if (!cleanPhone) { alert('Este viajante não tem telefone cadastrado.'); return; }
+                      const publicLink = `${window.location.origin}/ficha?id=${activeFichaContact.id}`;
+                      const firstName = (activeFichaContact.nickname || activeFichaContact.name || '').split(' ')[0] || '';
+                      const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
+                      const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);
+                      window.open(`https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`, '_blank');
+                    }}
+                    style={{ ...s.btn, flex: '1 1 100px', justifyContent: 'center' }}
+                  >📱 WhatsApp</button>
+                )}
 
-                {activeFichaContact.remedio !== 'não informado' && (
+                {(activeFichaContact._historical_at || activeFichaContact.remedio !== 'não informado') && (
                   <button onClick={() => exportFichaPDF(activeFichaContact)} style={{ ...s.btn, flex: '1 1 100px', justifyContent: 'center' }}>
                     📄 Exportar PDF
                   </button>

@@ -390,26 +390,25 @@ export default function Home() {
                       {medicalRecords.map((rec) => {
                         const meds = rec.medications_list || [];
                         const complete = rec.medical_form_step >= 6;
+                        const expired = complete && (Date.now() - new Date(rec.created_at).getTime()) > 30 * 24 * 60 * 60 * 1000;
                         const hasDuvidas = rec.medical_form_data?.sec6_duvidas;
                         const hasAtencao = rec.medical_form_data?.sec2_leitura_nao_li || rec.medical_form_data?.sec3_historico_obs || rec.medical_form_data?.sec5_experiencias_recentes;
                         return (
-                          <div key={rec.id} style={{ padding: '0.7rem 0.9rem', background: '#f7f4ee', border: `0.5px solid ${complete ? '#a8c8b0' : '#d0cbc2'}`, borderRadius: '2px' }}>
+                          <div
+                            key={rec.id}
+                            onClick={complete ? () => exportMedicalRecordPDF(rec, editingContact) : undefined}
+                            style={{ padding: '0.7rem 0.9rem', background: '#f7f4ee', border: `0.5px solid ${complete ? (expired ? '#e0c87a' : '#a8c8b0') : '#d0cbc2'}`, borderRadius: '2px', cursor: complete ? 'pointer' : 'default' }}
+                          >
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                               <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '10px', color: '#3a3530', fontWeight: 'bold' }}>
                                 {new Date(rec.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                               </span>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ fontSize: '10px', color: complete ? '#4a7a5a' : '#8a7a58' }}>
-                                  {complete ? '✓ completa' : `incompleta · passo ${rec.medical_form_step || 0}`}
+                                <span style={{ fontSize: '10px', color: expired ? '#c4892a' : complete ? '#4a7a5a' : '#8a7a58' }}>
+                                  {expired ? '↺ expirada' : complete ? '✓ completa' : `incompleta · passo ${rec.medical_form_step || 0}`}
                                 </span>
                                 {complete && (
-                                  <button
-                                    type="button"
-                                    onClick={() => exportMedicalRecordPDF(rec, editingContact)}
-                                    style={{ background: 'none', border: '0.5px dashed #b8b0a4', borderRadius: '2px', padding: '2px 7px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '9px', letterSpacing: '0.08em', color: '#7a7268' }}
-                                  >
-                                    PDF
-                                  </button>
+                                  <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#b0a898' }}>PDF →</span>
                                 )}
                               </div>
                             </div>
