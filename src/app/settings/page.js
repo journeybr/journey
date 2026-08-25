@@ -112,29 +112,29 @@ function ImagesTab() {
       <p style={{ fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#aaa49c', marginBottom: '2rem', lineHeight: 1.6 }}>
         Estas imagens aparecem no preview quando um link é compartilhado no WhatsApp.
       </p>
-      {images.filter(img => labels[img.key]).map(img => (
-        <div key={img.key} style={{ ...s.card, alignItems: 'flex-start' }}>
-          {/* Preview da imagem */}
+      {Object.entries(labels).map(([key, label]) => {
+        const img = images.find(i => i.key === key);
+        return (
+        <div key={key} style={{ ...s.card, alignItems: 'flex-start' }}>
           <div style={{ width: '100px', height: '70px', flexShrink: 0, border: '0.5px solid #ddd8d0', borderRadius: '2px', overflow: 'hidden', background: '#f5f0e8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {img.url
+            {img?.url
               ? <img src={img.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               : <span style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#c8c2b8', textAlign: 'center', padding: '4px' }}>sem imagem</span>
             }
           </div>
-          {/* Info */}
           <div style={{ flex: 1 }}>
-            <div style={s.cardTitle}>{labels[img.key] || img.key}</div>
-            {img.updated_at && (
+            <div style={s.cardTitle}>{label}</div>
+            {img?.updated_at && (
               <div style={s.cardMeta}>atualizada em {new Date(img.updated_at).toLocaleDateString('pt-BR')}</div>
             )}
           </div>
-          {/* Upload */}
-          <label style={{ ...s.btn, ...s.btnGhost, display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: uploading === img.key ? 0.6 : 1, cursor: uploading === img.key ? 'default' : 'pointer' }}>
-            {uploading === img.key ? 'enviando…' : '↑ trocar imagem'}
-            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={!!uploading} onChange={e => handleUpload(img.key, e.target.files?.[0])} />
+          <label style={{ ...s.btn, ...s.btnGhost, display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: uploading === key ? 0.6 : 1, cursor: uploading === key ? 'default' : 'pointer' }}>
+            {uploading === key ? 'enviando…' : '↑ trocar imagem'}
+            <input type="file" accept="image/*" style={{ display: 'none' }} disabled={!!uploading} onChange={e => handleUpload(key, e.target.files?.[0])} />
           </label>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -264,6 +264,7 @@ const TEMPLATE_CATEGORIES = [
   { value: 'preparacao', label: 'Preparação' },
   { value: 'pagamento', label: 'Pagamento' },
   { value: 'ficha', label: 'Ficha de Triagem' },
+  { value: 'pos_journey', label: 'Pós-Journey' },
 ];
 
 const emptyTemplate = { name: '', category: '', content: '' };
@@ -421,7 +422,7 @@ export default function SettingsHub() {
 
       <div style={s.content}>
         <button onClick={() => router.push('/events')} style={s.back}>← voltar às cerimônias</button>
-        <h1 style={s.heading}>Configurações</h1>
+        <h1 style={s.heading}>Padrões</h1>
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: 0, borderBottom: '0.5px solid #ddd8d0', marginBottom: '2rem' }}>
