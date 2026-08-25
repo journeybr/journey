@@ -250,6 +250,8 @@ export default function PagamentosPage() {
   const [resumoModal, setResumoModal] = useState(false);
   const [resumoCeremonies, setResumoCeremonies] = useState(new Set());
   const [resumoExpanded, setResumoExpanded] = useState(new Set());
+  const [viewMode, setViewMode] = useState('cards');
+  const [tablePopover, setTablePopover] = useState(null);
 
   // Filters
   const [personSearch, setPersonSearch] = useState('');
@@ -257,6 +259,7 @@ export default function PagamentosPage() {
   const toggleCeremony = id => setSelectedCeremonies(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const [ceremoniesOpen, setCeremoniesOpen] = useState(false);
   const ceremoniesRef = useRef(null);
+  const tablePopoverRef = useRef(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
@@ -276,6 +279,13 @@ export default function PagamentosPage() {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [ceremoniesOpen]);
+
+  useEffect(() => {
+    if (!tablePopover) return;
+    const handler = e => { if (tablePopoverRef.current && !tablePopoverRef.current.contains(e.target)) setTablePopover(null); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [tablePopover]);
 
   async function checkUser() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -1046,6 +1056,52 @@ export default function PagamentosPage() {
     });
   };
 
+  function openTablePopover(e, entry, col) {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    let title = '';
+    let items = [];
+    if (col === 'ceremo') {
+      title = '$ Cerimônia';
+      const lbl = entry._merged ? entry._ceremonyLabel : getEnrolledDaysLabel([entry]);
+      items = [{ label: lbl, value: entry._baseExpected != null ? `$${Number(entry._baseExpected).toFixed(2)}` : '—' }];
+    } else if (col === 'transfIn') {
+      title = 'Transferências recebidas';
+      items = (entry._inTransfers || []).map(t => ({
+        label: `↙ De ${t.from_contact?.nickname || t.from_contact?.name || '—'}`,
+        value: `+$${Number(t.amount).toFixed(2)}`,
+        sub: `${t.status}${t.payment_date ? ' · ' + new Date(t.payment_date + 'T12:00:00').toLocaleDateString('pt-BR') : ''}`,
+      }));
+      if (!items.length) items = [{ label: 'nenhuma', value: '' }];
+    } else if (col === 'transfInOrphan') {
+      title = 'Transferências recebidas';
+      items = (entry.transfersList || []).map(t => ({
+        label: `↙ De ${t.from_contact?.nickname || t.from_contact?.name || '—'}`,
+        value: `+$${Number(t.amount).toFixed(2)}`,
+        sub: `${t.status}${t.payment_date ? ' · ' + new Date(t.payment_date + 'T12:00:00').toLocaleDateString('pt-BR') : ''}`,
+      }));
+      if (!items.length) items = [{ label: 'nenhuma', value: '' }];
+    } else if (col === 'transfOut') {
+      title = 'Transferências enviadas';
+      items = (entry._outTransfers || []).map(t => ({
+        label: `↗ Para ${t.to_contact?.nickname || t.to_contact?.name || '—'}`,
+        value: `-$${Number(t.amount).toFixed(2)}`,
+        sub: `${t.status}${t.payment_date ? ' · ' + new Date(t.payment_date + 'T12:00:00').toLocaleDateString('pt-BR') : ''}`,
+      }));
+      if (!items.length) items = [{ label: 'nenhuma', value: '' }];
+    } else if (col === 'pago') {
+      title = 'Pagamentos';
+      const recs = (entry.payment_records || []).filter(r => !r.cancelled && !r.pledge);
+      items = recs.map(r => ({
+        label: r.method || 'Sem método',
+        value: `$${Number(r.amount).toFixed(2)}`,
+        sub: r.date ? new Date(r.date + 'T12:00:00').toLocaleDateString('pt-BR') : null,
+      }));
+      if (!items.length) items = [{ label: 'nenhum pagamento registrado', value: '' }];
+    }
+    setTablePopover({ title, items, rect });
+  }
+
   if (!user) return (
     <div style={{ textAlign: 'center', padding: '5rem', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: '#aaa49c', letterSpacing: '0.1em' }}>
       Verificando acesso...
@@ -1067,8 +1123,11 @@ export default function PagamentosPage() {
           <a href="/" style={s.navLink}><PersonIcon />{!isMobile && ' Pessoas'}</a>
           <a href="/events" style={s.navLink}><PlantIcon />{!isMobile && ' Cerimônias'}</a>
           <a href="/pagamentos" style={{ ...s.navLink, ...s.navLinkActive }}><CoinNavIcon />{!isMobile && ' Pagamentos'}</a>
-          <a href="/diario" style={s.navLink}><DiarioNavIcon />{!isMobile && ' Diário'}</a>
-          <a href="/settings/users" style={{ ...s.navLink, color: '#6a6258' }} title="Gestão de usuários"><GearIcon /></a>
+          <a href="/diario" style={s.navLink}><DiarioNavIcon /></a>
+          <a href="/settings" style={s.navLink} title="Padrões">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          </a>
+          <a href="/settings/users" style={s.navLink} title="Gestão de usuários"><GearIcon /></a>
           <button onClick={handleLogout} style={{ ...s.navLink, background: 'none', border: '0.5px dashed #5a5248', padding: '4px 10px', cursor: 'pointer' }}>sair</button>
         </div>
       </nav>
@@ -1136,15 +1195,21 @@ export default function PagamentosPage() {
         )}
       </div>
 
-      <div style={s.content}>
+      <div style={{ ...s.content, ...(viewMode === 'table' ? { maxWidth: '820px' } : {}) }}>
         {/* Header */}
         <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '0.5px solid #d0cbc2' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
             <h1 style={{ fontFamily: "'IM Fell English', serif", fontSize: '36px', fontWeight: 400, color: '#3a3530', margin: '0 0 0.5rem' }}>Pagamentos</h1>
-            <button onClick={() => setResumoModal(true)}
-              style={{ padding: '5px 12px', background: 'transparent', border: '0.5px solid #b8b0a4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>
-              ▤ resumo
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button onClick={() => setResumoModal(true)}
+                style={{ padding: '5px 12px', background: 'transparent', border: '0.5px solid #b8b0a4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: '#7a7268' }}>
+                ▤ resumo
+              </button>
+              <button onClick={() => { setViewMode(v => v === 'table' ? 'cards' : 'table'); setTablePopover(null); }}
+                style={{ padding: '5px 12px', background: viewMode === 'table' ? '#3a3530' : 'transparent', border: '0.5px solid #b8b0a4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.08em', textTransform: 'uppercase', color: viewMode === 'table' ? '#f7f4ee' : '#7a7268' }}>
+                ☰ tabela
+              </button>
+            </div>
           </div>
           {!loading && (
             <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1210,6 +1275,118 @@ export default function PagamentosPage() {
           <div style={{ padding: '4rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.08em', fontStyle: 'italic' }}>
             {hasFilters ? 'nenhum resultado para os filtros selecionados.' : 'nenhum participante em cerimônias ativas.'}
           </div>
+        ) : viewMode === 'table' ? (
+          STATUS_GROUPS.filter(g => statusFilter.size === 0 || statusFilter.has(g.key)).map(({ key, label, icon, color }) => {
+            const group = entriesComputed.filter(p => (p._statusBuckets || ['em aberto']).includes(key)).sort(sortByName);
+            const dash = <span style={{ color: '#d0cbc2' }}>—</span>;
+            const cellBtn = (onClick, value, btnColor) => (
+              <button onClick={onClick}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', color: btnColor, padding: 0, textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: '2px' }}>
+                {value}
+              </button>
+            );
+            return (
+              <div key={key} style={{ marginBottom: '2.4rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.9rem', paddingBottom: '0.5rem', borderBottom: `0.5px solid ${color}` }}>
+                  <span style={{ color, fontSize: '16px' }}>{icon}</span>
+                  <span style={{ fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color, fontWeight: 'bold' }}>{label}</span>
+                  <span style={{ fontSize: '10px', color: '#b0a898', marginLeft: '2px' }}>({group.length})</span>
+                </div>
+                {group.length === 0 ? (
+                  <div style={{ fontSize: '10px', color: '#c0b8b0', fontStyle: 'italic', padding: '0.4rem 0' }}>nenhum</div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontFamily: "'Courier Prime', monospace", fontSize: '11px' }}>
+                      <colgroup>
+                        <col style={{ width: '32%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '12%' }} />
+                        <col style={{ width: '11%' }} />
+                        <col style={{ width: '11%' }} />
+                        <col style={{ width: '11%' }} />
+                        <col style={{ width: '11%' }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ borderBottom: `0.5px solid ${color}` }}>
+                          {['Nome', 'Saldo', '$ Cerimônia', 'Desconto', 'Transf ↙', 'Transf ↗', 'Pago'].map(h => (
+                            <th key={h} style={{ padding: '5px 10px', textAlign: h === 'Nome' ? 'left' : 'right', fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color, fontWeight: 'normal', whiteSpace: 'nowrap', opacity: 0.75 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.map(p => {
+                          const name = p.contacts?.nickname || p.contacts?.name || '—';
+                          if (p._isTransferOnly) {
+                            const total = p._totalOwed || 0;
+                            const paid = p._totalPaid || 0;
+                            const saldo = Math.max(0, total - paid);
+                            return (
+                              <tr key={p.id}
+                                onMouseEnter={e => e.currentTarget.style.background = '#f5f2ec'}
+                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                style={{ borderBottom: '0.5px dashed #e0d8ce' }}>
+                                <td style={{ padding: '7px 10px' }}><div style={{ fontFamily: "'IM Fell English', serif", fontSize: '15px', color: '#3a3530', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={name}>{name}</div></td>
+                                <td style={{ padding: '7px 10px', textAlign: 'right', color: saldo <= 0 ? '#5d9470' : '#3a3530', fontWeight: saldo > 0 ? 'bold' : 'normal' }}>
+                                  ${saldo.toFixed(2)}
+                                </td>
+                                <td style={{ padding: '7px 10px', textAlign: 'right' }}>{dash}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'right' }}>{dash}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                  {total > 0 ? cellBtn(e => openTablePopover(e, p, 'transfInOrphan'), `$${total.toFixed(2)}`, '#5d8a6a') : dash}
+                                </td>
+                                <td style={{ padding: '7px 10px', textAlign: 'right' }}>{dash}</td>
+                                <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                  {paid > 0 ? <span style={{ color: '#5d9470' }}>${paid.toFixed(2)}</span> : dash}
+                                </td>
+                              </tr>
+                            );
+                          }
+                          const sumIn = p._sumIn || 0;
+                          const sumOut = p._sumOut || 0;
+                          const discount = p.discount || 0;
+                          const paidSoFar = p._paidSoFar || 0;
+                          const saldo = p._owed || 0;
+                          const openModal = () => {
+                            setModalAction(null);
+                            setPaymentModal({ contactId: p.contact_id, eventId: p.event_id, merged: p._merged || false, mergedEntry: p._merged ? p : null, status: p.payment_status || 'em aberto', method: 'Câmbio', installmentCount: p.installment_count || '', discountAmount: p.discount != null ? String(p.discount) : '50.00', localAmount: '', paymentAmount: p._owedAberto != null ? String(p._owedAberto) : '', paymentDate: '' });
+                          };
+                          return (
+                            <tr key={`${p.event_id}-${p.contact_id}`}
+                              onClick={openModal}
+                              onMouseEnter={e => e.currentTarget.style.background = '#f5f2ec'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                              style={{ borderBottom: '0.5px dashed #e0d8ce', cursor: 'pointer' }}>
+                              <td style={{ padding: '7px 10px' }}><div style={{ fontFamily: "'IM Fell English', serif", fontSize: '15px', color: '#3a3530', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={name}>{name}</div></td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right', color: saldo <= 0 ? '#5d9470' : '#3a3530', fontWeight: saldo > 0 ? 'bold' : 'normal' }}>
+                                ${saldo.toFixed(2)}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                {p._baseExpected != null
+                                  ? cellBtn(e => openTablePopover(e, p, 'ceremo'), `$${Number(p._baseExpected).toFixed(2)}`, '#7a7268')
+                                  : dash}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                {discount > 0 ? <span style={{ color: '#a08850' }}>${discount.toFixed(2)}</span> : dash}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                {sumIn > 0 ? cellBtn(e => openTablePopover(e, p, 'transfIn'), `$${sumIn.toFixed(2)}`, '#5d8a6a') : dash}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                {sumOut > 0 ? cellBtn(e => openTablePopover(e, p, 'transfOut'), `$${sumOut.toFixed(2)}`, '#b07a4a') : dash}
+                              </td>
+                              <td style={{ padding: '7px 10px', textAlign: 'right' }}>
+                                {paidSoFar > 0 ? cellBtn(e => openTablePopover(e, p, 'pago'), `$${paidSoFar.toFixed(2)}`, '#5d9470') : dash}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })
         ) : (
           STATUS_GROUPS.filter(g => statusFilter.size === 0 || statusFilter.has(g.key)).map(({ key, label, icon, color }) => {
             const group = entriesComputed.filter(p => (p._statusBuckets || ['em aberto']).includes(key)).sort(sortByName);
@@ -1901,6 +2078,28 @@ export default function PagamentosPage() {
           </div>
         </div>
       )}
+
+      {/* Table cell detail popover */}
+      {tablePopover && (() => {
+        const { title, items, rect } = tablePopover;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const above = spaceBelow < 160;
+        return (
+          <div ref={tablePopoverRef}
+            style={{ position: 'fixed', top: above ? rect.top - 4 : rect.bottom + 4, left: Math.min(rect.left, window.innerWidth - 280), transform: above ? 'translateY(-100%)' : 'none', zIndex: 2000, background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: '0.75rem 1rem', minWidth: '220px', maxWidth: '300px', fontFamily: "'Courier Prime', monospace" }}>
+            <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>{title}</div>
+            {items.map((item, i) => (
+              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem', padding: '4px 0', borderBottom: i < items.length - 1 ? '0.5px dashed #e0d8ce' : 'none' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '11px', color: '#3a3530', lineHeight: 1.4 }}>{item.label}</div>
+                  {item.sub && <div style={{ fontSize: '9px', color: '#aaa49c', marginTop: '1px' }}>{item.sub}</div>}
+                </div>
+                {item.value && <div style={{ fontSize: '11px', color: '#3a3530', flexShrink: 0, fontWeight: 600 }}>{item.value}</div>}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
