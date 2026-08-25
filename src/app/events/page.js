@@ -150,7 +150,7 @@ export default function Events() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const defaultFichaMessage = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
-  const emptyForm = { name: '', date: '', date2: '', date3: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', ficha_message: defaultFichaMessage, price_1d: '', price_2d: '', linked_event_id: null, disable_auto_pair: false };
+  const emptyForm = { name: '', date: '', date2: '', date3: '', image_url: '', invite_message: '', address: '', preparation_text: '', payment_text: '', ficha_message: defaultFichaMessage, pos_journey_message: '', price_1d: '', price_2d: '', linked_event_id: null, disable_auto_pair: false };
   const [formData, setFormData] = useState(emptyForm);
   const [editFormData, setEditFormData] = useState(emptyForm);
   const [inactiveEvents, setInactiveEvents] = useState([]);
@@ -196,9 +196,12 @@ export default function Events() {
       linked_event_id: formData.linked_event_id || null,
       disable_auto_pair: formData.disable_auto_pair || false,
     };
-    const { error } = await supabase.from('events').insert([dataToInsert]);
+    const { data: newEvent, error } = await supabase.from('events').insert([dataToInsert]).select('id').single();
     if (error) { alert('Erro ao criar cerimônia: ' + error.message); }
     else {
+      if (dataToInsert.linked_event_id) {
+        await supabase.from('events').update({ linked_event_id: newEvent.id }).eq('id', dataToInsert.linked_event_id);
+      }
       setIsModalOpen(false);
       setFormData(emptyForm);
       fetchEvents();
@@ -219,7 +222,18 @@ export default function Events() {
     };
     const { error } = await supabase.from('events').update(dataToUpdate).eq('id', editingEvent.id);
     if (error) { alert('Erro ao editar cerimônia: ' + error.message); }
-    else { setEditingEvent(null); fetchEvents(); }
+    else {
+      const oldLink = editingEvent.linked_event_id;
+      const newLink = dataToUpdate.linked_event_id;
+      if (oldLink && oldLink !== newLink) {
+        await supabase.from('events').update({ linked_event_id: null }).eq('id', oldLink);
+      }
+      if (newLink) {
+        await supabase.from('events').update({ linked_event_id: editingEvent.id }).eq('id', newLink);
+      }
+      setEditingEvent(null);
+      fetchEvents();
+    }
   }
 
   async function handleDeactivate(id) {
@@ -274,6 +288,7 @@ export default function Events() {
       preparation_text: event.preparation_text || '',
       payment_text: event.payment_text || '',
       ficha_message: event.ficha_message || defaultFichaMessage,
+      pos_journey_message: event.pos_journey_message || '',
       price_1d: event.price_1d != null ? String(event.price_1d) : '',
       price_2d: event.price_2d != null ? String(event.price_2d) : '',
       linked_event_id: event.linked_event_id || null,

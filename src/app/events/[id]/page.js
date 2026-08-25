@@ -801,6 +801,7 @@ export default function EventDetail({ params }) {
   const savingContactRef = useRef(false);
   const [activeOtherEvents, setActiveOtherEvents] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
+  const [posJourneyModal, setPosJourneyModal] = useState(null);
   const [desistenciaModal, setDesistenciaModal] = useState(null);
   const [diaryOpen, setDiaryOpen] = useState(false);
   const [diaryDateFilter, setDiaryDateFilter] = useState('today');
@@ -1376,6 +1377,25 @@ export default function EventDetail({ params }) {
     }
   }
 
+  async function togglePosJourney(contactId, field) {
+    const p = participants.find(x => x.contact_id === contactId);
+    const currentVal = p?.[field];
+    const newVal = currentVal ? null : new Date().toISOString();
+    const firstName = (p?.contacts?.nickname || p?.contacts?.name || '').split(' ')[0];
+    const fieldLabel = field === 'pos_journey_sent_at' ? 'pós-journey enviado' : 'pós-journey respondido';
+    const action = newVal ? 'marcou' : 'desmarcou';
+    const newEnrollmentLog = [...getEnrollmentLog(contactId), newLogEntry(`${action} ${fieldLabel} para ${firstName}`)];
+    const { error } = await supabase
+      .from('event_participants')
+      .update({ [field]: newVal, enrollment_log: newEnrollmentLog })
+      .match({ event_id: eventId, contact_id: contactId });
+    if (!error) {
+      setParticipants(prev => prev.map(x =>
+        x.contact_id === contactId ? { ...x, [field]: newVal, enrollment_log: newEnrollmentLog } : x
+      ));
+    }
+  }
+
   function newLogEntry(msg, prevState = null, extra = null) {
     const entry = { at: new Date().toISOString(), by: adminNameRef.current, msg };
     if (prevState) entry.prev = prevState;
@@ -1802,6 +1822,7 @@ export default function EventDetail({ params }) {
       preparation_text: event.preparation_text || '',
       payment_text: event.payment_text || '',
       ficha_message: event.ficha_message || defaultFichaMessage,
+      pos_journey_message: event.pos_journey_message || '',
       price_1d: event.price_1d != null ? String(event.price_1d) : '',
       price_2d: event.price_2d != null ? String(event.price_2d) : '',
       preparation_id: event.preparation_id || '',
@@ -1851,8 +1872,8 @@ export default function EventDetail({ params }) {
   const hasTwoDates = !!event.date2;
   const hasThreeDates = !!event.date3;
   const colTemplate = hasThreeDates
-    ? '160px 100px 58px 58px 98px 100px 38px 38px 58px'
-    : '160px 70px 58px 58px 98px 100px 38px 38px 58px';
+    ? '160px 100px 58px 58px 98px 100px 38px 38px 38px 58px'
+    : '160px 70px 58px 58px 98px 100px 38px 38px 38px 58px';
 
   const remedioOptions = [
     { value: 'enviar', label: 'Enviar', icon: '✉️', color: '#bbb' },
@@ -2116,6 +2137,19 @@ export default function EventDetail({ params }) {
           </div>
         ) : <span style={{ color: '#c0b8b0' }}>—</span>}
 
+        {/* Pós-Journey */}
+        {!isSimplified ? (
+          <div
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', opacity: cellOpacity }}
+            onClick={() => setPosJourneyModal({ contactId: p.contact_id })}
+            title={p.pos_journey_replied_at ? 'Respondeu o pós-journey' : p.pos_journey_sent_at ? 'Pós-journey enviado — aguardando resposta' : 'Pós-journey não enviado'}
+          >
+            <span style={{ fontSize: '15px', lineHeight: 1, color: p.pos_journey_replied_at ? '#5d9470' : p.pos_journey_sent_at ? '#c4892a' : '#c8c2b8', userSelect: 'none' }}>
+              {p.pos_journey_replied_at ? '♡' : p.pos_journey_sent_at ? '✉' : '○'}
+            </span>
+          </div>
+        ) : <span style={{ color: '#c0b8b0', display: 'flex', justifyContent: 'center', width: '100%' }}>—</span>}
+
         {/* Ações: Transferir + WhatsApp + Remover */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
           {p.status !== 'desistiu' && activeOtherEvents.length > 0 && (
@@ -2240,6 +2274,13 @@ export default function EventDetail({ params }) {
               title={p.endereco_enviado ? 'Endereço enviado' : 'Enviar endereço'}
             >
               <PinIcon active={p.endereco_enviado} />
+            </span>
+            <span
+              onClick={() => setPosJourneyModal({ contactId: p.contact_id })}
+              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', fontSize: '15px', lineHeight: 1, color: p.pos_journey_replied_at ? '#5d9470' : p.pos_journey_sent_at ? '#c4892a' : '#c8c2b8', userSelect: 'none' }}
+              title={p.pos_journey_replied_at ? 'Respondeu o pós-journey' : p.pos_journey_sent_at ? 'Pós-journey enviado — aguardando resposta' : 'Pós-journey não enviado'}
+            >
+              {p.pos_journey_replied_at ? '♡' : p.pos_journey_sent_at ? '✉' : '○'}
             </span>
             <span onClick={() => { const ph = p.contacts?.phone?.replace(/\D/g, ''); if (ph) window.open(`https://wa.me/${ph}`, '_blank'); }} style={{ cursor: 'pointer', color: '#8a8278', opacity: 0.5, display: 'inline-flex', alignItems: 'center' }}><WaIcon /></span>
           </div>
@@ -2418,7 +2459,7 @@ export default function EventDetail({ params }) {
                   <div style={{ ...s.tableHeader, gridTemplateColumns: colTemplate }}>
                     <div>participante</div><div>dias</div><div>vaga</div>
                     <div style={{ textAlign: 'center' }}>remédio</div>
-                    <div style={{ gridColumn: '5 / 9', textAlign: 'center' }}>dia do interesse</div>
+                    <div style={{ gridColumn: '5 / 10', textAlign: 'center' }}>dia do interesse</div>
                     <div style={{ textAlign: 'center' }}>ações</div>
                   </div>
                   {[...interessados]
@@ -2502,13 +2543,13 @@ export default function EventDetail({ params }) {
                             <PillIcon status={(effectiveRemedioStatus === 'Ok' || effectiveRemedioStatus === 'Ok Manual') ? 'ok' : effectiveRemedioStatus === 'Acompanhar' ? 'warn' : effectiveRemedioStatus === 'preenchido' ? 'attention' : 'pending'} />
                           </div>
 
-                          {/* Não há pago/status/inicial/end ainda — mostra a data/hora do interesse nesse espaço */}
-                          <div style={{ gridColumn: '5 / 9', textAlign: 'center', color: '#b0a898', fontSize: '11px', fontFamily: "'Courier Prime', monospace" }}>
+                          {/* Não há pago/status/inicial/end/pós ainda — mostra a data/hora do interesse nesse espaço */}
+                          <div style={{ gridColumn: '5 / 10', textAlign: 'center', color: '#b0a898', fontSize: '11px', fontFamily: "'Courier Prime', monospace" }}>
                             manifestou interesse em {dataHora}
                           </div>
 
                           {/* Ações: Transferir + WhatsApp */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', gridColumn: '9' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', gridColumn: '10' }}>
                             {activeOtherEvents.length > 0 && (
                               <span
                                 title="Transferir para outra cerimônia"
@@ -2565,6 +2606,7 @@ export default function EventDetail({ params }) {
                       <div style={{ textAlign: 'center' }}>pago</div><div style={{ textAlign: 'center' }}>status</div>
                       <div style={{ textAlign: 'center' }}>inicial</div>
                       <div style={{ textAlign: 'center' }}>end</div>
+                      <div style={{ textAlign: 'center' }}>pós</div>
                       <div style={{ textAlign: 'center' }}>ações</div>
                     </div>
                     {filtered.map(p => renderParticipantRow(p, false))}
@@ -2600,6 +2642,7 @@ export default function EventDetail({ params }) {
                       <div style={{ textAlign: 'center' }}>pago</div><div style={{ textAlign: 'center' }}>status</div>
                       <div style={{ textAlign: 'center' }}>inicial</div>
                       <div style={{ textAlign: 'center' }}>end</div>
+                      <div style={{ textAlign: 'center' }}>pós</div>
                       <div style={{ textAlign: 'center' }}>ações</div>
                     </div>
                     {filtered.map(p => renderParticipantRow(p, true))}
@@ -2969,6 +3012,77 @@ export default function EventDetail({ params }) {
                 </button>
               </div>
 
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal Pós-Journey */}
+      {posJourneyModal && (() => {
+        const pj = participants.find(x => x.contact_id === posJourneyModal.contactId);
+        if (!pj) return null;
+        const pjContact = pj.contacts;
+        const firstName = (pjContact?.nickname || pjContact?.name || '').split(' ')[0];
+        const fullName = pjContact?.nickname || pjContact?.name || '—';
+        const hasSent = !!pj.pos_journey_sent_at;
+        const hasReplied = !!pj.pos_journey_replied_at;
+        const iconColor = hasReplied ? '#5d9470' : hasSent ? '#c4892a' : '#c8c2b8';
+        const iconChar = hasReplied ? '♡' : hasSent ? '✉' : '○';
+        const btnBase = { width: '100%', padding: '10px 12px', background: 'transparent', border: '0.5px dashed #d0cbc2', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '11px', letterSpacing: '0.04em', color: '#3a3530', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '8px' };
+        return (
+          <div
+            onClick={() => setPosJourneyModal(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
+          >
+            <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '340px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace", overflow: 'hidden' }}>
+              {/* Header */}
+              <div style={{ padding: '1.2rem 1.5rem 1rem', borderBottom: '0.5px solid #e8e2d8', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '20px', color: iconColor }}>{iconChar}</span>
+                <div>
+                  <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.1rem', color: '#3a3530' }}>{fullName}</div>
+                  <div style={{ fontSize: '10px', color: '#9a9288', letterSpacing: '0.06em', textTransform: 'uppercase', marginTop: '2px' }}>
+                    {hasReplied ? 'respondeu' : hasSent ? 'aguardando resposta' : 'não enviado'}
+                  </div>
+                </div>
+              </div>
+              {/* Actions */}
+              <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {event.pos_journey_message && (
+                  <button
+                    onClick={() => {
+                      const ph = pjContact?.phone?.replace(/\D/g, '');
+                      if (!ph) { alert('Sem telefone cadastrado.'); return; }
+                      const msg = resolveVars(event.pos_journey_message, { firstName, p: pj, event, pageUrl: null });
+                      window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`, '_blank');
+                      if (!hasSent) togglePosJourney(posJourneyModal.contactId, 'pos_journey_sent_at');
+                    }}
+                    style={{ ...btnBase, color: '#5d9470', border: '0.5px solid #9dcfb4' }}
+                  >
+                    <WaIcon /> Enviar mensagem por WhatsApp
+                  </button>
+                )}
+                <button
+                  onClick={() => togglePosJourney(posJourneyModal.contactId, 'pos_journey_sent_at')}
+                  style={{ ...btnBase }}
+                >
+                  {hasSent ? '↩ Desmarcar enviado' : '✉ Marcar como enviado'}
+                </button>
+                <button
+                  onClick={() => togglePosJourney(posJourneyModal.contactId, 'pos_journey_replied_at')}
+                  style={{ ...btnBase }}
+                >
+                  {hasReplied ? '↩ Desmarcar respondeu' : '♡ Marcar como respondeu'}
+                </button>
+              </div>
+              {/* Footer */}
+              <div style={{ padding: '0 1.5rem 1.2rem' }}>
+                <button
+                  onClick={() => setPosJourneyModal(null)}
+                  style={{ width: '100%', padding: '8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+                >
+                  fechar
+                </button>
+              </div>
             </div>
           </div>
         );

@@ -235,6 +235,7 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
                   preparation_text: copySource.preparation_text || prev.preparation_text,
                   payment_text: copySource.payment_text || prev.payment_text,
                   ficha_message: copySource.ficha_message || prev.ficha_message,
+                  pos_journey_message: copySource.pos_journey_message || prev.pos_journey_message,
                 }))}
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.08em', color: '#b0a898', textDecoration: 'underline', textUnderlineOffset: '3px' }}
               >
@@ -306,6 +307,14 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
             </div>
             <textarea value={data.ficha_message || ''} onChange={e => setData({ ...data, ficha_message: e.target.value })} rows="5" placeholder={'Oi, [nome]!\n\nSegue o Formulário de Triagem...\n\n[link]'} style={{ ...modalInputStyle, resize: 'vertical' }} />
             <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.05em' }}>Variáveis: [nome] · [link] · [nome da cerimônia] · [data da cerimônia] · [dia inscrito]</div>
+          </div>
+          <div style={{ marginBottom: '1.2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+              <label style={{ ...modalLabelStyle, marginBottom: 0 }}>Mensagem Pós-Journey</label>
+              <TemplateLoader category="pos_journey" onLoad={v => setData(d => ({ ...d, pos_journey_message: v }))} />
+            </div>
+            <textarea value={data.pos_journey_message || ''} onChange={e => setData({ ...data, pos_journey_message: e.target.value })} rows="3" placeholder="Mensagem enviada após a cerimônia para saber como a pessoa está..." style={{ ...modalInputStyle, resize: 'vertical' }} />
+            <div style={{ fontSize: '10px', color: '#9a9288', marginTop: '4px', fontFamily: "'Courier Prime', monospace", letterSpacing: '0.05em' }}>Variáveis: [nome] · [nome da cerimônia] · [data da cerimônia] · [dia inscrito]</div>
           </div>
           <div style={{ display: 'flex', gap: '0.8rem' }}>
             <button type="submit" style={modalSubmitStyle}>{submitLabel}</button>

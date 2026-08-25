@@ -104,6 +104,7 @@ function ImagesTab() {
     pagamento: 'Pagamento',
     ficha: 'Ficha de Triagem',
     preparacao: 'Preparação',
+    pos_journey: 'Pós-Journey',
   };
 
   return (

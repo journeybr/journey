@@ -106,6 +106,12 @@ export default function Home() {
   const [originalPhoneState, setOriginalPhoneState] = useState({ body: '', code: '+55' });
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobile, setIsMobile] = useState(false);
+  const [participationsMap, setParticipationsMap] = useState({});
+  const [manualDatesMap, setManualDatesMap] = useState({});
+  const [allEvents, setAllEvents] = useState([]);
+  const [addingCeremonyFor, setAddingCeremonyFor] = useState(null);
+  const [pendingCeremony, setPendingCeremony] = useState(null);
+  const [pendingDays, setPendingDays] = useState(new Set());
   const router = useRouter();
 
   useEffect(() => {
@@ -138,9 +144,172 @@ export default function Home() {
 
   async function fetchData() {
     setLoading(true);
-    const { data } = await supabase.from('contacts').select('*').order('created_at', { ascending: false });
-    if (data) setContacts(data);
+    const [
+      { data: contactsData },
+      { data: parts },
+      { data: manuals },
+      { data: eventsData },
+    ] = await Promise.all([
+      supabase.from('contacts').select('*').order('created_at', { ascending: false }),
+      supabase.from('event_participants').select('contact_id, event_id, date1_confirmed, date2_confirmed, date3_confirmed, status, events(id, name, date, date2, date3, linked_event_id, disable_auto_pair)').neq('status', 'desistiu'),
+      supabase.from('contact_manual_dates').select('id, contact_id, event_id, date'),
+      supabase.from('events').select('id, name, date, date2, date3').order('date', { ascending: true }),
+    ]);
+    if (contactsData) setContacts(contactsData);
+    if (eventsData) setAllEvents(eventsData);
+
+    // Group event_participants by contact → groups of dates per ceremony
+    const pMap = {};
+    (parts || []).forEach(p => {
+      if (!pMap[p.contact_id]) pMap[p.contact_id] = [];
+      const ev = p.events;
+      if (ev) {
+        const dates = [];
+        if (p.date1_confirmed && ev.date) dates.push(ev.date);
+        if (p.date2_confirmed && ev.date2) dates.push(ev.date2);
+        if (p.date3_confirmed && ev.date3) dates.push(ev.date3);
+        if (dates.length > 0) {
+          pMap[p.contact_id].push({ eventId: p.event_id, linkedEventId: ev.linked_event_id, disableAutoPair: ev.disable_auto_pair, dates: dates.sort(), source: 'event' });
+        }
+      }
+    });
+
+    // Merge paired ceremonies (linked_event_id) into a single group
+    Object.keys(pMap).forEach(contactId => {
+      const groups = pMap[contactId];
+      const merged = [];
+      const used = new Set();
+      groups.forEach((g, i) => {
+        if (used.has(i)) return;
+        const pairIdx = groups.findIndex((g2, j) => {
+          if (j === i || used.has(j)) return false;
+          if (g.linkedEventId && (g.linkedEventId === g2.eventId || g2.linkedEventId === g.eventId)) return true;
+          if (!g.disableAutoPair && !g2.disableAutoPair && g.dates[0] && g2.dates[0]) {
+            const diff = Math.abs(new Date(g.dates[0]) - new Date(g2.dates[0]));
+            if (diff <= 29 * 24 * 60 * 60 * 1000) return true;
+          }
+          return false;
+        });
+        if (pairIdx !== -1) {
+          used.add(i);
+          used.add(pairIdx);
+          const pair = groups[pairIdx];
+          merged.push({ key: `ev-${g.eventId}-${pair.eventId}`, dates: [...g.dates, ...pair.dates].sort(), source: 'event', eventId: g.eventId });
+        } else {
+          used.add(i);
+          merged.push({ ...g, key: `ev-${g.eventId}` });
+        }
+      });
+      pMap[contactId] = merged;
+    });
+
+    setParticipationsMap(pMap);
+
+    // Group manual dates by contact → group by event_id
+    const mMap = {};
+    (manuals || []).forEach(m => {
+      if (!mMap[m.contact_id]) mMap[m.contact_id] = [];
+      mMap[m.contact_id].push({ id: m.id, event_id: m.event_id, date: m.date });
+    });
+    setManualDatesMap(mMap);
+
     setLoading(false);
+  }
+
+  function getGroupedDates(contactId) {
+    // From event_participants: already one group per ceremony (pairs merged in pMap)
+    const fromEvents = (participationsMap[contactId] || []).map(g => ({
+      key: g.key || `ev-${g.eventId}`,
+      dates: g.dates,
+      source: 'event',
+      eventId: g.eventId,
+    }));
+
+    // From manual dates: group by event_id
+    const manuals = manualDatesMap[contactId] || [];
+    const manualByEvent = {};
+    manuals.forEach(m => {
+      const key = m.event_id || `solo-${m.id}`;
+      if (!manualByEvent[key]) manualByEvent[key] = { key: `man-${key}`, dates: [], ids: [], source: 'manual', eventId: m.event_id };
+      manualByEvent[key].dates.push(m.date);
+      manualByEvent[key].ids.push(m.id);
+    });
+    const manualGroups = Object.values(manualByEvent).map(g => ({ ...g, dates: g.dates.sort() }));
+
+    // Auto-merge manual groups within 29 days (same rule as event list)
+    const mergedManual = [];
+    const usedManual = new Set();
+    manualGroups.forEach((g, i) => {
+      if (usedManual.has(i)) return;
+      const pairIdx = manualGroups.findIndex((g2, j) => {
+        if (j === i || usedManual.has(j)) return false;
+        if (g.dates[0] && g2.dates[0]) {
+          return Math.abs(new Date(g.dates[0]) - new Date(g2.dates[0])) <= 29 * 24 * 60 * 60 * 1000;
+        }
+        return false;
+      });
+      if (pairIdx !== -1) {
+        usedManual.add(i);
+        usedManual.add(pairIdx);
+        const pair = manualGroups[pairIdx];
+        mergedManual.push({
+          key: `${g.key}-${pair.key}`,
+          dates: [...g.dates, ...pair.dates].sort(),
+          source: 'manual',
+          eventId: null,
+          ids: [...g.ids, ...pair.ids],
+        });
+      } else {
+        usedManual.add(i);
+        mergedManual.push(g);
+      }
+    });
+
+    const all = [...fromEvents, ...mergedManual];
+    all.sort((a, b) => (a.dates[0] || '').localeCompare(b.dates[0] || ''));
+    return all;
+  }
+
+  function fmtDateBadge(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+  }
+
+  // Returns event_ids already registered (manually) for a contact
+  function getManualEventIds(contactId) {
+    return new Set((manualDatesMap[contactId] || []).map(m => m.event_id).filter(Boolean));
+  }
+
+  async function addManualCeremony(contactId, event, dates) {
+    const rows = dates.map(date => ({ contact_id: contactId, event_id: event.id, date }));
+    const { data, error } = await supabase.from('contact_manual_dates').insert(rows).select('id, event_id, date');
+    if (error) { alert('Erro: ' + error.message); return; }
+    setManualDatesMap(prev => ({
+      ...prev,
+      [contactId]: [...(prev[contactId] || []), ...(data || [])],
+    }));
+    setAddingCeremonyFor(null);
+    setPendingCeremony(null);
+    setPendingDays(new Set());
+  }
+
+  async function removeManualGroup(contactId, eventId, ids) {
+    if (!confirm('Remover esta cerimônia do histórico?')) return;
+    let query = supabase.from('contact_manual_dates').delete();
+    if (eventId) {
+      query = query.eq('contact_id', contactId).eq('event_id', eventId);
+    } else {
+      query = query.in('id', ids);
+    }
+    const { error } = await query;
+    if (!error) {
+      setManualDatesMap(prev => ({
+        ...prev,
+        [contactId]: (prev[contactId] || []).filter(m =>
+          eventId ? m.event_id !== eventId : !ids.includes(m.id)
+        ),
+      }));
+    }
   }
 
   async function handleLogout() {
@@ -286,13 +455,121 @@ export default function Home() {
           <div style={{ padding: '4rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.08em' }}>carregando...</div>
         ) : (
           <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: '1rem', padding: '0 0 0.6rem', borderBottom: '0.5px solid #3a3530' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 90px' : '220px 1fr 90px', gap: '1rem', padding: '0 0 0.6rem', borderBottom: '0.5px solid #3a3530' }}>
               <div style={s.label}>participante</div>
+              {!isMobile && <div style={s.label}>cerimônias</div>}
               <div style={{ ...s.label, textAlign: 'right' }}>ações</div>
             </div>
 
-            {filteredContacts.map((contact) => (
-              <div key={contact.id} style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: '1rem', padding: '0.85rem 0', borderBottom: '0.5px dashed #ddd9cf', alignItems: 'center' }}>
+            {filteredContacts.map((contact) => {
+              const groups = getGroupedDates(contact.id);
+              const isAdding = addingCeremonyFor === contact.id;
+              const manualEventIds = getManualEventIds(contact.id);
+              const eventParticipantEventIds = new Set((participationsMap[contact.id] || []).map(g => g.eventId));
+              // Events the contact isn't already registered in (neither via event_participants nor manual)
+              const availableEvents = allEvents.filter(ev =>
+                !eventParticipantEventIds.has(ev.id) && !manualEventIds.has(ev.id)
+              );
+              const datesBadges = (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'flex-start' }}>
+                  {groups.map(group => (
+                    <div
+                      key={group.key}
+                      onClick={group.source === 'manual' ? () => removeManualGroup(contact.id, group.eventId, group.ids) : undefined}
+                      title={group.source === 'manual' ? 'Lançado manualmente — clique para remover' : 'Cerimônia confirmada no sistema'}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '2px', cursor: group.source === 'manual' ? 'pointer' : 'default' }}
+                    >
+                      {group.dates.map(date => (
+                        <span
+                          key={date}
+                          style={{
+                            fontFamily: "'Courier Prime', monospace",
+                            fontSize: '9px',
+                            color: group.source === 'manual' ? '#8a7a58' : '#4a7a5a',
+                            border: `0.5px solid ${group.source === 'manual' ? '#c8b888' : '#9dcfb4'}`,
+                            borderRadius: '2px',
+                            padding: '2px 5px',
+                            background: group.source === 'manual' ? '#faf7f0' : '#eef7f2',
+                            userSelect: 'none',
+                          }}
+                        >
+                          {fmtDateBadge(date)}
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+                  {isAdding && !pendingCeremony && (
+                    <select
+                      autoFocus
+                      defaultValue=""
+                      onChange={e => {
+                        const ev = allEvents.find(x => x.id === e.target.value);
+                        if (ev) {
+                          setPendingCeremony(ev);
+                          setPendingDays(new Set([ev.date, ev.date2, ev.date3].filter(Boolean)));
+                        }
+                      }}
+                      onBlur={() => setAddingCeremonyFor(null)}
+                      style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#3a3530', border: '0.5px solid #b8b0a4', borderRadius: '2px', padding: '2px 4px', background: '#fdfbf7', outline: 'none', maxWidth: '160px' }}
+                    >
+                      <option value="" disabled>← escolher cerimônia</option>
+                      {availableEvents.map(ev => (
+                        <option key={ev.id} value={ev.id}>
+                          {ev.name} · {fmtDateBadge(ev.date)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {isAdding && pendingCeremony && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', background: '#faf9f6', border: '0.5px solid #c8c2b8', borderRadius: '2px', padding: '6px 8px' }}>
+                      <div style={{ fontSize: '9px', color: '#7a7268', letterSpacing: '0.06em' }}>{pendingCeremony.name}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {[pendingCeremony.date, pendingCeremony.date2, pendingCeremony.date3].filter(Boolean).map(date => (
+                          <label key={date} style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '9px', cursor: 'pointer', color: '#3a3530', userSelect: 'none' }}>
+                            <input
+                              type="checkbox"
+                              checked={pendingDays.has(date)}
+                              onChange={() => setPendingDays(prev => {
+                                const next = new Set(prev);
+                                if (next.has(date)) next.delete(date); else next.add(date);
+                                return next;
+                              })}
+                              style={{ width: '10px', height: '10px', margin: 0, accentColor: '#4a7a5a', cursor: 'pointer' }}
+                            />
+                            {fmtDateBadge(date)}
+                          </label>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', marginTop: '1px' }}>
+                        <button
+                          onClick={() => addManualCeremony(contact.id, pendingCeremony, [...pendingDays])}
+                          disabled={pendingDays.size === 0}
+                          style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#f7f4ee', background: pendingDays.size === 0 ? '#b8b0a4' : '#4a7a5a', border: 'none', borderRadius: '2px', padding: '2px 8px', cursor: pendingDays.size === 0 ? 'default' : 'pointer' }}
+                        >
+                          salvar
+                        </button>
+                        <button
+                          onClick={() => { setAddingCeremonyFor(null); setPendingCeremony(null); setPendingDays(new Set()); }}
+                          style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#8a8278', background: 'transparent', border: '0.5px dashed #c8c2b8', borderRadius: '2px', padding: '2px 6px', cursor: 'pointer' }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {!isAdding && (
+                    <button
+                      onClick={() => { setAddingCeremonyFor(contact.id); setPendingCeremony(null); setPendingDays(new Set()); }}
+                      title="Lançar participação em cerimônia anterior"
+                      style={{ fontFamily: "'Courier Prime', monospace", fontSize: '9px', color: '#b0a898', border: '0.5px dashed #c8c2b8', borderRadius: '2px', padding: '2px 6px', background: 'transparent', cursor: 'pointer', lineHeight: 1.4, alignSelf: 'flex-start' }}
+                    >
+                      +
+                    </button>
+                  )}
+                </div>
+              );
+              return (
+              <div key={contact.id} style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 90px' : '220px 1fr 90px', gap: '1rem', padding: '0.85rem 0', borderBottom: '0.5px dashed #ddd9cf', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>
                     {contact.nickname || contact.name}
@@ -301,7 +578,9 @@ export default function Home() {
                     {contact.phone || 'sem telefone'}
                     {contact.nome_completo ? ` · ${contact.nome_completo}` : ''}
                   </div>
+                  {isMobile && <div style={{ marginTop: '6px' }}>{datesBadges}</div>}
                 </div>
+                {!isMobile && datesBadges}
                 <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end', alignItems: 'center' }}>
                   <button onClick={() => handleOpenContact(contact)} title="Editar" style={{ width: '26px', height: '26px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: '0.5px dashed #b8b0a4', borderRadius: '2px', cursor: 'pointer', color: '#7a7268', padding: 0 }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -316,7 +595,8 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-            ))}
+            );
+            })}
 
             {filteredContacts.length === 0 && (
               <div style={{ padding: '3rem 0', textAlign: 'center', color: '#aaa49c', fontSize: '12px', letterSpacing: '0.06em' }}>nenhum contato encontrado.</div>
