@@ -793,6 +793,7 @@ export default function EventDetail({ params }) {
   const [confirmPartialModal, setConfirmPartialModal] = useState(null);
   const [contactAllDays, setContactAllDays] = useState([]);
   const [crossCeremonyExpected, setCrossCeremonyExpected] = useState({});
+  const [historyCountMap, setHistoryCountMap] = useState({});
   const [transfers, setTransfers] = useState([]);
   const [contactEditModal, setContactEditModal] = useState(null);
   const [savingContact, setSavingContact] = useState(false);
@@ -1071,6 +1072,25 @@ export default function EventDetail({ params }) {
           }
         });
       setCrossCeremonyExpected(crossMap);
+
+      // History count: confirmed days in the 7 months before the ceremony month
+      if (eventData.date) {
+        const cDate = new Date(eventData.date + 'T12:00:00');
+        const windowStart = new Date(cDate.getFullYear(), cDate.getMonth() - 7, 1);
+        const windowEnd = new Date(cDate.getFullYear(), cDate.getMonth(), 0); // last day of prev month
+        const histMap = {};
+        contactIds.forEach(id => { histMap[id] = 0; });
+        (otherParts || []).forEach(p => {
+          const ev = p.events;
+          if (!ev) return;
+          [[p.date1_confirmed, ev.date], [p.date2_confirmed, ev.date2], [p.date3_confirmed, ev.date3]].forEach(([confirmed, d]) => {
+            if (!confirmed || !d) return;
+            const dt = new Date(d + 'T12:00:00');
+            if (dt >= windowStart && dt <= windowEnd) histMap[p.contact_id] = (histMap[p.contact_id] || 0) + 1;
+          });
+        });
+        setHistoryCountMap(histMap);
+      }
 
       // Auto-corrigir primeira_vez: participante com cerimônia confirmada anterior não é mais de primeira vez.
       const today = new Date().toISOString().split('T')[0];
@@ -1928,7 +1948,14 @@ export default function EventDetail({ params }) {
             )}
             {p.contacts?.nickname || p.contacts?.name}
           </div>
-          <div style={s.travelerPhone}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'nowrap', minWidth: 0 }}>
+            <span style={{ ...s.travelerPhone, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</span>
+            {(historyCountMap[p.contact_id] || 0) > 0 && (
+              <span title="Dias nos 7 meses anteriores à cerimônia" style={{ fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', border: '0.5px solid #c8c2b8', borderRadius: '50%', width: '20px', height: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, lineHeight: 1 }}>
+                {historyCountMap[p.contact_id]}d
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Dias */}
@@ -2201,7 +2228,14 @@ export default function EventDetail({ params }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer' }}>
             <div style={{ ...s.travelerName, }}>{p.contacts?.nickname || p.contacts?.name}</div>
-            <div style={s.travelerPhone}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'nowrap', minWidth: 0 }}>
+              <span style={{ ...s.travelerPhone, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</span>
+              {(historyCountMap[p.contact_id] || 0) > 0 && (
+                <span title="Dias nos 7 meses anteriores à cerimônia" style={{ fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', border: '0.5px solid #c8c2b8', borderRadius: '50%', width: '20px', height: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, lineHeight: 1 }}>
+                  {historyCountMap[p.contact_id]}d
+                </span>
+              )}
+            </div>
           </div>
           <div style={{ flexShrink: 0, marginLeft: '0.5rem' }}>
             {badgeText === 'Confirmado' || badgeText === 'Reservado'
@@ -2473,14 +2507,21 @@ export default function EventDetail({ params }) {
                       return (
                         <div key={p.contact_id} style={{ ...s.row, gridTemplateColumns: colTemplate }}>
                           {/* Nome */}
-                          <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer' }}>
+                          <div onClick={() => p.contacts && openContactEdit(p.contacts)} style={{ cursor: 'pointer', minWidth: 0 }}>
                             <div style={s.travelerName}>
                               {p.contacts?.primeira_vez && (
                                 <span title="Primeiro encontro" style={{ color: '#5d9470', fontFamily: "'IM Fell English', serif", fontSize: '13px', marginRight: '4px', userSelect: 'none', opacity: 0.8 }}>✦</span>
                               )}
                               {p.contacts?.nickname || p.contacts?.name}
                             </div>
-                            <div style={s.travelerPhone}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'nowrap', minWidth: 0 }}>
+                              <span style={{ ...s.travelerPhone, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{p.contacts?.nome_completo || p.contacts?.phone || '—'}</span>
+                              {(historyCountMap[p.contact_id] || 0) > 0 && (
+                                <span title="Dias nos 7 meses anteriores à cerimônia" style={{ fontFamily: "'Courier Prime', monospace", fontSize: '8px', color: '#9a9288', border: '0.5px solid #c8c2b8', borderRadius: '50%', width: '20px', height: '20px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, lineHeight: 1 }}>
+                                  {historyCountMap[p.contact_id]}d
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           {/* Dias */}
