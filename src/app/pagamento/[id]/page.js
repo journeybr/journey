@@ -216,7 +216,7 @@ export default function PagamentoPage({ params }) {
     setLoading(false);
   }
 
-  const reservedDays = participants.flatMap(p => {
+  const reservedDays = participants.filter(p => p.payment_status !== 'pago').flatMap(p => {
     const days = [];
     if (p.date1_confirmed && p.events?.date)
       days.push({ date: p.events.date, event: p.events.name });
