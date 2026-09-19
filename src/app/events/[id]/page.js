@@ -1442,7 +1442,7 @@ export default function EventDetail({ params }) {
       ? crossCeremonyExpected[p.contact_id]
       : ([p.date1_confirmed, p.date2_confirmed, p.date3_confirmed].filter(Boolean).length >= 2 && event?.price_2d) ? event.price_2d : (event?.price_1d ?? null);
     const outTransfers = transfers.filter(t => t.from_contact_id === p.contact_id && t.event_id === eventId);
-    const inTransfers = transfers.filter(t => t.to_contact_id === p.contact_id);
+    const inTransfers = transfers.filter(t => t.to_contact_id === p.contact_id && t.event_id === eventId);
     const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
     const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
     const expectedAmount = baseExpected != null ? baseExpected - sumOut + sumIn : (sumIn > 0 ? sumIn : baseExpected);

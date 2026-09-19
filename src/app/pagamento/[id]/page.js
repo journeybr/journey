@@ -218,8 +218,10 @@ export default function PagamentoPage({ params }) {
 
   const reservedDays = participants.filter(p => {
     const paidForThis = (p.payment_records || []).filter(r => !r.cancelled && !r.pledge).reduce((s, r) => s + (r.amount || 0), 0);
+    const outForThis = transfersOut.filter(t => t.event_id === p.event_id).reduce((s, t) => s + Number(t.amount), 0);
     const expected = computeExpected(p, participants) ?? 0;
-    return expected <= 0 || paidForThis < expected;
+    const discount = p.discount || 0;
+    return expected - discount - paidForThis - outForThis > 0;
   }).flatMap(p => {
     const days = [];
     if (p.date1_confirmed && p.events?.date)

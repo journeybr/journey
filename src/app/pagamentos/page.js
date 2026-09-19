@@ -912,28 +912,34 @@ export default function PagamentosPage() {
     return Object.values(groups);
   }, [transfers, participants]);
 
-  // Independente de cerimônia — não filtra por selectedCeremony, só por pessoa/data.
   const filteredOrphans = useMemo(() => {
-    return orphanTransferEntries.filter(o => {
+    return orphanTransferEntries.flatMap(o => {
+      const list = selectedCeremonies.length > 0
+        ? o.transfersList.filter(t => selectedCeremonies.includes(t.event_id))
+        : o.transfersList;
+      if (list.length === 0) return [];
       if (personSearch) {
         const q = personSearch.toLowerCase();
         const nm = (o.contacts?.nickname || o.contacts?.name || '').toLowerCase();
-        if (!nm.includes(q)) return false;
+        if (!nm.includes(q)) return [];
       }
       if (dateFrom || dateTo) {
-        const lastLogAt = o.transfersList.reduce((latest, t) => {
+        const lastLogAt = list.reduce((latest, t) => {
           const log = t.log || [];
           const at = log.length ? log[log.length - 1].at : t.created_at;
           return (!latest || (at && at > latest)) ? at : latest;
         }, null);
-        if (!lastLogAt) return false;
+        if (!lastLogAt) return [];
         const d = lastLogAt.slice(0, 10);
-        if (dateFrom && d < dateFrom) return false;
-        if (dateTo && d > dateTo) return false;
+        if (dateFrom && d < dateFrom) return [];
+        if (dateTo && d > dateTo) return [];
       }
-      return true;
+      const totalOwed = list.reduce((s, t) => s + Number(t.amount), 0);
+      const overallRemaining = Math.max(0, o._totalOwed - (o._totalPaid || 0));
+      const status = overallRemaining <= 0 && o._totalOwed > 0 ? 'pago' : 'em aberto';
+      return [{ ...o, transfersList: list, payment_status: status, _totalOwed: totalOwed }];
     });
-  }, [orphanTransferEntries, personSearch, dateFrom, dateTo]);
+  }, [orphanTransferEntries, personSearch, dateFrom, dateTo, selectedCeremonies]);
 
   const displayParticipants = useMemo(() => {
     const merged = new Set();
@@ -984,8 +990,8 @@ export default function PagamentosPage() {
       const outTransfers = p._merged && p._secondary
         ? [...(transfersOutMap[`${p.contact_id}-${p.event_id}`] || []), ...(transfersOutMap[`${p._secondary.contact_id}-${p._secondary.event_id}`] || [])]
         : (transfersOutMap[`${p.contact_id}-${p.event_id}`] || []);
-      const isPrimaryRow = primaryEventByContact[p.contact_id] === p.event_id;
-      const inTransfers = isPrimaryRow ? (transfersInMap[p.contact_id] || []) : [];
+      const rowEventIds = new Set(p._merged && p._secondary ? [p.event_id, p._secondary.event_id] : [p.event_id]);
+      const inTransfers = transfers.filter(t => t.to_contact_id === p.contact_id && rowEventIds.has(t.event_id));
       const sumOut = outTransfers.reduce((s, t) => s + Number(t.amount), 0);
       const sumIn = inTransfers.reduce((s, t) => s + Number(t.amount), 0);
       const baseExpected = p._merged ? p._expectedAmount : computeExpected(p, participants);
@@ -1047,6 +1053,26 @@ export default function PagamentosPage() {
     entriesComputed.forEach(p => { (p._statusBuckets || ['em aberto']).forEach(k => { c[k] = (c[k] || 0) + 1; }); });
     return c;
   }, [entriesComputed]);
+
+  const byPersonGroups = useMemo(() => {
+    if (selectedCeremonies.length > 0) return [];
+    const byContact = new Map();
+    entriesComputed.forEach(p => {
+      const cid = p.contact_id;
+      const nm = p.contacts?.nickname || p.contacts?.name || '—';
+      if (!byContact.has(cid)) byContact.set(cid, { nm, cid, entries: [] });
+      byContact.get(cid).entries.push(p);
+    });
+    return [...byContact.values()]
+      .map(g => {
+        const total = g.entries.reduce((sum, p) => {
+          if (p._isTransferOnly) return sum + Math.max(0, (p._totalOwed || 0) - (p._totalPaid || 0));
+          return sum + Math.max(0, p._owed || 0);
+        }, 0);
+        return { ...g, total };
+      })
+      .sort((a, b) => a.nm.localeCompare(b.nm, 'pt-BR'));
+  }, [entriesComputed, selectedCeremonies]);
 
   const toggleStatusFilter = (key) => {
     setStatusFilter(prev => {
@@ -1387,6 +1413,89 @@ export default function PagamentosPage() {
               </div>
             );
           })
+        ) : selectedCeremonies.length === 0 ? (
+          (() => {
+            const renderPersonCard = ({ nm, cid, entries, total }, showTotal) => (
+              <div key={cid} style={{ marginBottom: '8px', border: '0.5px solid #d0cbc2', borderRadius: '2px', background: '#fdfbf7', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 1rem', borderBottom: '0.5px solid #e8e2d8' }}>
+                  <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '16px', color: '#3a3530' }}>{nm}</span>
+                  {showTotal && <span style={{ fontSize: '11px', fontFamily: "'Courier Prime', monospace", color: '#3a3530', fontWeight: 'bold', flexShrink: 0, marginLeft: '10px' }}>$ {total.toFixed(2)}</span>}
+                </div>
+                {entries.flatMap(p => {
+                  if (p._isTransferOnly) {
+                    const byEvent = new Map();
+                    p.transfersList.forEach(t => {
+                      const eid = t.event_id;
+                      if (!byEvent.has(eid)) byEvent.set(eid, { name: t.events?.name || '—', amount: 0 });
+                      byEvent.get(eid).amount += Number(t.amount);
+                    });
+                    const eventLines = [...byEvent.entries()].map(([eid, { name: eName, amount }]) => (
+                      <div key={`${p.id}-${eid}`}
+                        onClick={() => setOrphanModal({ contactId: p.contact_id, name: nm, transfersList: p.transfersList })}
+                        onMouseEnter={e => e.currentTarget.style.background = '#f5f2ec'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 1rem', cursor: 'pointer', borderTop: '0.5px dashed #e8e2d8' }}>
+                        <span style={{ fontSize: '10px', fontFamily: "'Courier Prime', monospace", color: '#9a9288', fontStyle: 'italic' }}>{eName}</span>
+                        <span style={{ fontSize: '11px', fontFamily: "'Courier Prime', monospace", color: '#3a3530', fontWeight: 'bold', flexShrink: 0, marginLeft: '10px' }}>$ {amount.toFixed(2)}</span>
+                      </div>
+                    ));
+                    const paid = p._totalPaid || 0;
+                    if (paid > 0) {
+                      eventLines.push(
+                        <div key={`${p.id}-paid`}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 1rem', borderTop: '0.5px dashed #e8e2d8', background: 'rgba(93,148,112,0.04)' }}>
+                          <span style={{ fontSize: '10px', fontFamily: "'Courier Prime', monospace", color: '#5d9470', fontStyle: 'italic' }}>pago</span>
+                          <span style={{ fontSize: '11px', fontFamily: "'Courier Prime', monospace", color: '#5d9470', flexShrink: 0, marginLeft: '10px' }}>−$ {paid.toFixed(2)}</span>
+                        </div>
+                      );
+                    }
+                    return eventLines;
+                  }
+                  const lbl = p._merged ? p._ceremonyLabel : getEnrolledDaysLabel([p]);
+                  const owedAmt = p._owed || 0;
+                  const isConferirEntry = (p._statusBuckets || []).includes('conferir pagamento');
+                  return [(
+                    <div key={`${p.event_id}-${p.contact_id}`}
+                      onClick={() => { setModalAction(null); setPaymentModal({ contactId: p.contact_id, eventId: p.event_id, merged: p._merged || false, mergedEntry: p._merged ? p : null, status: p.payment_status || 'em aberto', method: 'Câmbio', installmentCount: p.installment_count || '', discountAmount: p.discount != null ? String(p.discount) : '50.00', localAmount: '', paymentAmount: p._owedAberto != null ? String(p._owedAberto) : '', paymentDate: '' }); }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f5f2ec'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.4rem 1rem', cursor: 'pointer', borderTop: '0.5px dashed #e8e2d8' }}>
+                      <span style={{ fontSize: '10px', fontFamily: "'Courier Prime', monospace", color: isConferirEntry ? '#c4892a' : '#9a9288', fontStyle: 'italic' }}>
+                        {isConferirEntry ? '⚠ ' : ''}{lbl}
+                      </span>
+                      <span style={{ fontSize: '11px', fontFamily: "'Courier Prime', monospace", color: owedAmt <= 0 ? '#5d9470' : (isConferirEntry ? '#c4892a' : '#3a3530'), fontWeight: owedAmt > 0 ? 'bold' : 'normal', flexShrink: 0, marginLeft: '10px' }}>
+                        $ {owedAmt.toFixed(2)}
+                      </span>
+                    </div>
+                  )];
+                })}
+              </div>
+            );
+            const withBalance = byPersonGroups.filter(g => g.total > 0);
+            const zeroed = byPersonGroups.filter(g => g.total <= 0);
+            return (
+              <>
+                {withBalance.length > 0 && (
+                  <div style={{ marginBottom: '2.4rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.9rem', paddingBottom: '0.5rem', borderBottom: '0.5px solid #b07a4a' }}>
+                      <span style={{ fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#b07a4a', fontWeight: 'bold' }}>Com saldo a pagar</span>
+                      <span style={{ fontSize: '10px', color: '#b0a898' }}>({withBalance.length})</span>
+                    </div>
+                    {withBalance.map(g => renderPersonCard(g, true))}
+                  </div>
+                )}
+                {zeroed.length > 0 && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '0.9rem', paddingBottom: '0.5rem', borderBottom: '0.5px solid #5d9470' }}>
+                      <span style={{ fontSize: '10px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#5d9470', fontWeight: 'bold' }}>Zerado</span>
+                      <span style={{ fontSize: '10px', color: '#b0a898' }}>({zeroed.length})</span>
+                    </div>
+                    {zeroed.map(g => renderPersonCard(g, false))}
+                  </div>
+                )}
+              </>
+            );
+          })()
         ) : (
           STATUS_GROUPS.filter(g => statusFilter.size === 0 || statusFilter.has(g.key)).map(({ key, label, icon, color }) => {
             const group = entriesComputed.filter(p => (p._statusBuckets || ['em aberto']).includes(key)).sort(sortByName);
