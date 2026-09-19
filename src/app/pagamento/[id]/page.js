@@ -230,7 +230,10 @@ export default function PagamentoPage({ params }) {
   const sumOut = transfersOut.reduce((s, t) => s + Number(t.amount), 0);
   const sumIn = transfersIn.reduce((s, t) => s + Number(t.amount), 0);
   const totalDiscount = participants.reduce((s, p) => s + (p.discount || 0), 0);
-  const price = basePrice != null ? Math.max(0, basePrice - sumOut + sumIn - totalDiscount) : (sumIn > 0 ? Math.max(0, sumIn) : null);
+  const totalPaidSoFar = participants.reduce((sum, p) => {
+    return sum + (p.payment_records || []).filter(r => !r.cancelled && !r.pledge).reduce((s, r) => s + (r.amount || 0), 0);
+  }, 0);
+  const price = basePrice != null ? Math.max(0, basePrice - totalPaidSoFar - sumOut + sumIn - totalDiscount) : (sumIn > 0 ? Math.max(0, sumIn) : null);
 
   const firstName = (contact?.nickname || contact?.name || '').split(' ')[0];
 
@@ -266,7 +269,7 @@ export default function PagamentoPage({ params }) {
       : { status: 'conferir pagamento', payment_method: 'Espécie' };
 
     await Promise.all([
-      ...participants.map(async p => {
+      ...participants.filter(p => p.payment_status !== 'pago').map(async p => {
         const withLog = { ...statusData, ...baseExt, payment_log: [...(p.payment_log || []), logEntry] };
         const { error } = await supabase.from('event_participants').update(withLog)
           .match({ event_id: p.event_id, contact_id: p.contact_id });

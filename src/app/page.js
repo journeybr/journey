@@ -150,7 +150,7 @@ export default function Home() {
       { data: manuals },
       { data: eventsData },
     ] = await Promise.all([
-      supabase.from('contacts').select('*').order('created_at', { ascending: false }),
+      supabase.from('contacts').select('*').order('nickname', { ascending: true }),
       supabase.from('event_participants').select('contact_id, event_id, date1_confirmed, date2_confirmed, date3_confirmed, status, events(id, name, date, date2, date3, linked_event_id, disable_auto_pair)').neq('status', 'desistiu'),
       supabase.from('contact_manual_dates').select('id, contact_id, event_id, date'),
       supabase.from('events').select('id, name, date, date2, date3').order('date', { ascending: true }),
