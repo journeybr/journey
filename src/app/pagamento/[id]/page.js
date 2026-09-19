@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { computeBasePriceForContact } from '@/lib/paymentCalc';
+import { computeBasePriceForContact, computeExpected } from '@/lib/paymentCalc';
 
 const fonts = `
   @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600&family=IM+Fell+English:ital@0;1&family=Courier+Prime&display=swap');
@@ -216,7 +216,11 @@ export default function PagamentoPage({ params }) {
     setLoading(false);
   }
 
-  const reservedDays = participants.filter(p => p.payment_status !== 'pago').flatMap(p => {
+  const reservedDays = participants.filter(p => {
+    const paidForThis = (p.payment_records || []).filter(r => !r.cancelled && !r.pledge).reduce((s, r) => s + (r.amount || 0), 0);
+    const expected = computeExpected(p, participants) ?? 0;
+    return expected <= 0 || paidForThis < expected;
+  }).flatMap(p => {
     const days = [];
     if (p.date1_confirmed && p.events?.date)
       days.push({ date: p.events.date, event: p.events.name });
