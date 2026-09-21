@@ -1005,6 +1005,9 @@ export default function PagamentosPage() {
       if (pledgeRecords.length === 0 && p.payment_status === 'a pagar no local' && total != null) {
         pledgedLocal = Math.max(0, total - paidSoFar);
       }
+      // Capa o pledge no saldo real — evita que registro antigo (ex: 2 dias) infle o valor
+      // quando o esperado cai (ex: participante remove um dia).
+      if (total != null) pledgedLocal = Math.min(pledgedLocal, Math.max(0, total - paidSoFar));
 
       const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
       const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
@@ -1463,9 +1466,16 @@ export default function PagamentosPage() {
                       <span style={{ fontSize: '10px', fontFamily: "'Courier Prime', monospace", color: isConferirEntry ? '#c4892a' : '#9a9288', fontStyle: 'italic' }}>
                         {isConferirEntry ? '⚠ ' : ''}{lbl}
                       </span>
-                      <span style={{ fontSize: '11px', fontFamily: "'Courier Prime', monospace", color: owedAmt <= 0 ? '#5d9470' : (isConferirEntry ? '#c4892a' : '#3a3530'), fontWeight: owedAmt > 0 ? 'bold' : 'normal', flexShrink: 0, marginLeft: '10px' }}>
-                        $ {owedAmt.toFixed(2)}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, marginLeft: '10px' }}>
+                        <button onClick={e => { e.stopPropagation(); setTransferModal({ fromContactId: p.contact_id, eventId: p.event_id, fromName: nm, toContactId: '', amount: '', observation: '' }); }}
+                          title="Transferir"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', fontSize: '13px', color: '#c0b8b0', lineHeight: 1 }}>
+                          ⇄
+                        </button>
+                        <span style={{ fontSize: '11px', fontFamily: "'Courier Prime', monospace", color: owedAmt <= 0 ? '#5d9470' : (isConferirEntry ? '#c4892a' : '#3a3530'), fontWeight: owedAmt > 0 ? 'bold' : 'normal' }}>
+                          $ {owedAmt.toFixed(2)}
+                        </span>
+                      </div>
                     </div>
                   )];
                 })}
@@ -1756,6 +1766,11 @@ export default function PagamentosPage() {
                       <span>{opt.label}</span>
                     </button>
                   ))}
+                  <button onClick={() => { setPaymentModal(null); setTransferModal({ fromContactId: paymentModal.contactId, eventId: paymentModal.eventId, fromName: pmP?.contacts?.nickname || pmP?.contacts?.name || '—', toContactId: '', amount: '', observation: '' }); }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 6px', background: 'transparent', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.02em', color: '#7a7268', textAlign: 'center' }}>
+                    <span>⇄</span>
+                    <span>Transferir</span>
+                  </button>
                 </div>
                 <div style={{ fontSize: '9px', color: '#b0a898', marginTop: '0.5rem', lineHeight: 1.5, fontStyle: 'italic' }}>
                   "Em aberto", "pago" e "transferido" são calculados automaticamente pelo saldo.

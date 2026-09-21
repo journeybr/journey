@@ -802,6 +802,7 @@ export default function EventDetail({ params }) {
   const savingContactRef = useRef(false);
   const [activeOtherEvents, setActiveOtherEvents] = useState([]);
   const [transferModal, setTransferModal] = useState(null);
+  const [paymentTransferModal, setPaymentTransferModal] = useState(null);
   const [posJourneyModal, setPosJourneyModal] = useState(null);
   const [desistenciaModal, setDesistenciaModal] = useState(null);
   const [diaryOpen, setDiaryOpen] = useState(false);
@@ -1218,6 +1219,20 @@ export default function EventDetail({ params }) {
     fetchEventData();
   }
 
+  async function createPaymentTransfer() {
+    const { fromContactId, fromName, toContactId, amount, observation } = paymentTransferModal;
+    if (!toContactId || !amount) return;
+    const toName = allContacts.find(c => c.id === toContactId)?.nickname || allContacts.find(c => c.id === toContactId)?.name || '—';
+    const logEntry = newLogEntry(`criou transferência de ${Number(amount).toFixed(2)} de ${fromName || '—'} para ${toName}`);
+    const { data, error } = await supabase
+      .from('payment_transfers')
+      .insert({ event_id: eventId, from_contact_id: fromContactId, to_contact_id: toContactId, amount: parseFloat(amount), observation: observation || null, log: [logEntry] })
+      .select('*, from_contact:contacts!from_contact_id(id,name,nickname), to_contact:contacts!to_contact_id(id,name,nickname), events(id,name,date,date2,date3,active,linked_event_id)')
+      .single();
+    if (!error && data) setTransfers(prev => [...prev, data]);
+    setPaymentTransferModal(null);
+  }
+
   async function toggleDayPresence(contactId, day, currentStatus) {
     const fields = ['date1_confirmed', 'date2_confirmed', 'date3_confirmed'];
     const field = fields[day - 1];
@@ -1457,6 +1472,7 @@ export default function EventDetail({ params }) {
     if (pledgeRecords.length === 0 && p.payment_status === 'a pagar no local' && total != null) {
       pledgedLocal = Math.max(0, total - paidSoFar);
     }
+    if (total != null) pledgedLocal = Math.min(pledgedLocal, Math.max(0, total - paidSoFar));
 
     const nonPledgedRemainder = total != null ? Math.max(0, total - pledgedLocal) : null;
     const owedAberto = nonPledgedRemainder != null ? Math.max(0, nonPledgedRemainder - paidSoFar) : null;
@@ -2855,6 +2871,49 @@ export default function EventDetail({ params }) {
         </div>
       )}
 
+      {paymentTransferModal && (
+        <div onClick={() => setPaymentTransferModal(null)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(58,53,48,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '320px', background: '#fdfbf7', border: '0.5px solid #b8b0a4', borderRadius: '2px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)', fontFamily: "'Courier Prime', monospace" }}>
+            <div style={{ padding: '1.2rem 1.5rem 0.9rem', borderBottom: '0.5px solid #d0cbc2' }}>
+              <div style={{ fontSize: '9px', letterSpacing: '0.14em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.3rem' }}>Transferir pagamento</div>
+              <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '20px', color: '#3a3530', lineHeight: 1.1 }}>{paymentTransferModal.fromName}</div>
+            </div>
+            <div style={{ padding: '1rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+              <div>
+                <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '4px' }}>Para</div>
+                <select value={paymentTransferModal.toContactId}
+                  onChange={e => setPaymentTransferModal(prev => ({ ...prev, toContactId: e.target.value }))}
+                  style={{ width: '100%', padding: '7px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none' }}>
+                  <option value="">Selecionar contato...</option>
+                  {allContacts.filter(c => c.id !== paymentTransferModal.fromContactId).map(c => (
+                    <option key={c.id} value={c.id}>{c.nickname || c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '4px' }}>Valor (USD)</div>
+                <input type="number" min="0" step="0.01" value={paymentTransferModal.amount}
+                  onChange={e => setPaymentTransferModal(prev => ({ ...prev, amount: e.target.value }))}
+                  placeholder="0.00"
+                  style={{ width: '100%', padding: '7px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: '8px', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '4px' }}>Observação (opcional)</div>
+                <input type="text" value={paymentTransferModal.observation}
+                  onChange={e => setPaymentTransferModal(prev => ({ ...prev, observation: e.target.value }))}
+                  placeholder="Motivo da transferência..."
+                  style={{ width: '100%', padding: '7px 8px', background: '#fff', border: '0.5px solid #c8c2b8', borderRadius: '2px', fontFamily: "'Courier Prime', monospace", fontSize: '12px', color: '#3a3530', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+            </div>
+            <div style={{ padding: '0 1.5rem 1.2rem', display: 'flex', gap: '0.5rem' }}>
+              <button onClick={() => setPaymentTransferModal(null)} style={{ flex: 1, padding: '8px', background: 'transparent', color: '#9a9288', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>cancelar</button>
+              <button onClick={createPaymentTransfer} disabled={!paymentTransferModal.toContactId || !paymentTransferModal.amount}
+                style={{ flex: 1, padding: '8px', background: paymentTransferModal.toContactId && paymentTransferModal.amount ? '#3a3530' : '#c8c2b8', color: '#f7f4ee', border: 'none', borderRadius: '2px', cursor: paymentTransferModal.toContactId && paymentTransferModal.amount ? 'pointer' : 'default', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>confirmar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {desistenciaModal && (
         <DesistenciaModal
           modal={desistenciaModal}
@@ -3171,6 +3230,11 @@ export default function EventDetail({ params }) {
                       <span>{opt.label}</span>
                     </button>
                   ))}
+                  <button onClick={() => { setPaymentModal(null); setPaymentTransferModal({ fromContactId: p.contact_id, eventId: eventId, fromName: p.contacts?.nickname || p.contacts?.name || '—', toContactId: '', amount: '', observation: '' }); }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '8px 6px', background: 'transparent', border: '0.5px dashed #c8c2b8', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.02em', color: '#7a7268', textAlign: 'center' }}>
+                    <span>⇄</span>
+                    <span>Transferir</span>
+                  </button>
                 </div>
                 <div style={{ fontSize: '9px', color: '#b0a898', marginTop: '0.5rem', lineHeight: 1.5, fontStyle: 'italic' }}>
                   "Em aberto" e "pago" são calculados automaticamente pelo saldo.
