@@ -595,7 +595,6 @@ function computeFichaAlerts(contact) {
   return { redFlags, hasMeds, medsList, outros, unchecked };
 }
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function calcAge(dobStr) {
   if (!dobStr) return null;
@@ -622,7 +621,8 @@ function computeEffectiveRemedioStatus(p) {
     if (p.remedio_status === 'enviado') return 'enviado';
     return 'enviar';
   }
-  if (p._fichaLastCompletedAt && Date.now() - new Date(p._fichaLastCompletedAt).getTime() > THIRTY_DAYS_MS) return 'expirada';
+  // Ficha preenchida mas sem registro para esta cerimônia (ou a pareada)
+  if (!p._fichaHasThisEvent) return 'expirada';
   if (r === 'não') return 'Ok';
   return 'preenchido';
 }
@@ -1016,17 +1016,29 @@ export default function EventDetail({ params }) {
       
     if (partData && partData.length > 0) {
       const contactIds = partData.map(p => p.contact_id).filter(Boolean);
+      const linkedEventId = eventData?.linked_event_id;
       const { data: medRecords } = await supabase
         .from('medical_records')
-        .select('contact_id, created_at, medical_form_step')
+        .select('contact_id, created_at, medical_form_step, event_id')
         .in('contact_id', contactIds)
         .gte('medical_form_step', 6)
         .order('created_at', { ascending: false });
-      const fichaCompletedAtMap = {};
+      const FICHA_EVENT_CUTOFF = new Date('2026-11-01').getTime();
+      const ceremonyDate = eventData?.date ? new Date(eventData.date).getTime() : 0;
+      const requiresLinkedFicha = ceremonyDate >= FICHA_EVENT_CUTOFF;
+      const fichaMap = {};
       (medRecords || []).forEach(r => {
-        if (!fichaCompletedAtMap[r.contact_id]) fichaCompletedAtMap[r.contact_id] = r.created_at;
+        if (!fichaMap[r.contact_id]) fichaMap[r.contact_id] = { lastAt: r.created_at, hasThisEvent: false };
+        const matchesEvent = requiresLinkedFicha
+          ? (r.event_id === eventId || (linkedEventId && r.event_id === linkedEventId))
+          : true;
+        if (matchesEvent) fichaMap[r.contact_id].hasThisEvent = true;
       });
-      setParticipants(partData.map(p => ({ ...p, _fichaLastCompletedAt: fichaCompletedAtMap[p.contact_id] || null })));
+      setParticipants(partData.map(p => ({
+        ...p,
+        _fichaLastCompletedAt: fichaMap[p.contact_id]?.lastAt || null,
+        _fichaHasThisEvent: fichaMap[p.contact_id]?.hasThisEvent ?? false,
+      })));
     } else {
       setParticipants(partData || []);
     }
@@ -3029,7 +3041,7 @@ export default function EventDetail({ params }) {
                   <div style={{ fontSize: '9px', letterSpacing: '0.12em', textTransform: 'uppercase', color: '#aaa49c', marginBottom: '0.5rem' }}>Histórico</div>
                   {remedioModalHistory.map(rec => {
                     const complete = rec.medical_form_step >= 6;
-                    const expired = complete && Date.now() - new Date(rec.created_at).getTime() > THIRTY_DAYS_MS;
+                    const expired = complete && rec.event_id && rec.event_id !== eventId && rec.event_id !== event?.linked_event_id;
                     const dateStr = new Date(rec.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
                     return (
                       <div
@@ -3080,7 +3092,7 @@ export default function EventDetail({ params }) {
                   onClick={() => {
                     const cleanPhone = rContact?.phone?.replace(/\D/g, '') || '';
                     if (!cleanPhone) { alert('Sem telefone cadastrado.'); return; }
-                    const publicLink = `${window.location.origin}/ficha?id=${remedioModal.contactId}`;
+                    const publicLink = `${window.location.origin}/ficha?id=${remedioModal.contactId}&event=${eventId}`;
                     const firstName = (rContact?.nickname || rContact?.name || '').split(' ')[0] || '';
                     const defaultFichaMsg = 'Oi, [nome]!\n\nSegue o Formulário de Triagem, clicando no link abaixo:\n\n[link]\n\nPor favor preenche o mais rápido possível pra dar tempo de a gente planejar sua experiência.';
                     const message = (event?.ficha_message || defaultFichaMsg).replace('[nome]', firstName).replace('[link]', publicLink);

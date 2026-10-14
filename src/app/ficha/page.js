@@ -77,6 +77,7 @@ const EMPTY_FORM = {
 
 export default function PublicFicha() {
   const [contactId, setContactId] = useState(null);
+  const [fichaEventId, setFichaEventId] = useState(null);
   const [currentStep, setCurrentStep] = useState(S.DECLARACAO);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -103,7 +104,10 @@ export default function PublicFicha() {
   // Load contact from URL
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const id = new URLSearchParams(window.location.search).get('id');
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    const evId = params.get('event');
+    if (evId) setFichaEventId(evId);
     if (!id) return;
     (async () => {
       const { data, error } = await supabase.from('contacts').select('*').eq('id', id).single();
@@ -303,6 +307,7 @@ export default function PublicFicha() {
       if (isFinal) {
         const { error: recErr } = await supabase.from('medical_records').insert([{
           contact_id: aid,
+          event_id: fichaEventId || null,
           medical_form_data: update.medical_form_data,
           medications_list: medications,
           medical_form_step: nextStep,
