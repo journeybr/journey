@@ -3090,7 +3090,8 @@ export default function EventDetail({ params }) {
                 )}
                 <button
                   onClick={() => {
-                    const cleanPhone = rContact?.phone?.replace(/\D/g, '') || '';
+                    const rawDigits = (rContact?.phone || '').replace(/\D/g, '');
+                    const cleanPhone = rawDigits.length <= 11 ? `55${rawDigits}` : rawDigits;
                     if (!cleanPhone) { alert('Sem telefone cadastrado.'); return; }
                     const publicLink = `${window.location.origin}/ficha?id=${remedioModal.contactId}&event=${eventId}`;
                     const firstName = (rContact?.nickname || rContact?.name || '').split(' ')[0] || '';

@@ -113,10 +113,32 @@ export default function PublicFicha() {
       const { data, error } = await supabase.from('contacts').select('*').eq('id', id).single();
       if (!data || error) return;
       setContactId(id);
-      if (data.medical_form_step) setCurrentStep(Math.min(data.medical_form_step, 8));
-      if (data.medications_list) setMedications(data.medications_list);
       const firstName = data.nickname || (data.name || '').split(' ')[0] || '';
       const bestName = data.nome_completo || firstName;
+      if (evId) {
+        // Link de cerimônia: preenche só dados de identificação, respostas médicas em branco
+        const storedPhone = data.phone || '';
+        const { ddi, local } = (() => {
+          // Com prefixo +
+          const knownDDIs = ['+598', '+55', '+54', '+56', '+49', '+44', '+33', '+1'];
+          for (const d of knownDDIs) {
+            if (storedPhone.startsWith(d)) return { ddi: d, local: storedPhone.slice(d.length).replace(/\D/g, '') };
+          }
+          // Sem prefixo + — verifica se os dígitos já incluem código de país
+          const digits = storedPhone.replace(/\D/g, '');
+          const knownCodes = ['598', '55', '54', '56', '49', '44', '33', '1'];
+          for (const code of knownCodes) {
+            if (digits.startsWith(code) && digits.length > code.length + 7) {
+              return { ddi: `+${code}`, local: digits.slice(code.length) };
+            }
+          }
+          return { ddi: '+55', local: digits };
+        })();
+        setFormData(prev => ({ ...prev, nome_completo: bestName, data_nascimento: data.medical_form_data?.data_nascimento || '', telefone_ddi: ddi, telefone: local, cpf: data.cpf || '' }));
+        return;
+      }
+      if (data.medical_form_step) setCurrentStep(Math.min(data.medical_form_step, 8));
+      if (data.medications_list) setMedications(data.medications_list);
       if (data.medical_form_data && Object.keys(data.medical_form_data).length > 0) {
         const saved = { ...data.medical_form_data, nome_completo: bestName };
         setFormData(prev => ({ ...prev, ...saved }));
@@ -175,6 +197,23 @@ export default function PublicFicha() {
       else if (v.length > 0) v = `(${v}`;
     }
     setFormData(prev => ({ ...prev, telefone: v }));
+  };
+
+  const handlePhoneBlur = async () => {
+    const cleanDigits = formData.telefone.replace(/\D/g, '');
+    if (cleanDigits.length < 8) return;
+    const fullPhone = `${formData.telefone_ddi || '+55'}${cleanDigits}`;
+    const { data, error } = await supabase.from('contacts').select('nome_completo, name, medical_form_data').eq('phone', fullPhone).limit(1);
+    if (error) { console.error('phone lookup:', error.message); return; }
+    const row = data?.[0];
+    if (!row) return;
+    const nome = row.nome_completo || row.name || '';
+    const dob = row.medical_form_data?.data_nascimento || '';
+    setFormData(prev => ({
+      ...prev,
+      ...(nome && !prev.nome_completo ? { nome_completo: nome } : {}),
+      ...(dob && !prev.data_nascimento ? { data_nascimento: dob } : {}),
+    }));
   };
 
   // Canvas drawing
@@ -290,7 +329,7 @@ export default function PublicFicha() {
         update.status = 'Prospecto';
         update.name = fd.nome_completo || 'Anônimo';
         const cp = fd.telefone.replace(/\D/g, '');
-        if (cp) update.phone = cp;
+        if (cp) update.phone = `${fd.telefone_ddi || '+55'}${cp}`;
         if (fd.cpf) update.cpf = fd.cpf.replace(/\D/g, '');
 
         const { data: c } = await supabase.from('contacts').select('observations').eq('id', aid).single();
@@ -619,7 +658,7 @@ export default function PublicFicha() {
                         <option value="+598">🇺🇾 +598</option>
                         <option value="+56">🇨🇱 +56</option>
                       </select>
-                      <input type="tel" name="telefone" value={formData.telefone} onChange={handlePhoneChange}
+                      <input type="tel" name="telefone" value={formData.telefone} onChange={handlePhoneChange} onBlur={handlePhoneBlur}
                         placeholder="(11) 99999-9999" style={{ ...inputStyle, flex: 1 }} />
                     </div>
                   </div>
