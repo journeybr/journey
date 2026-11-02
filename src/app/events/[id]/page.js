@@ -3413,7 +3413,8 @@ export default function EventDetail({ params }) {
                       const msg = template
                         .replace(/\[Link\]/g, paymentLink)
                         .replace(/\[Nome\]/g, firstName)
-                        .replace(/\[dias_da_cerimônia\]/g, daysStr);
+                        .replace(/\[dias_da_cerimônia\]/g, daysStr)
+                        .replace(/\[dia inscrito\]/g, daysStr);
                       window.open(`https://api.whatsapp.com/send?phone=${ph}&text=${encodeURIComponent(msg)}`, '_blank');
                     }}
                     style={{ width: '100%', padding: '8px', background: 'transparent', color: '#5d9470', border: '0.5px solid #9dcfb4', borderRadius: '2px', cursor: 'pointer', fontFamily: "'Courier Prime', monospace", fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
