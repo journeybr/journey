@@ -3401,7 +3401,7 @@ export default function EventDetail({ params }) {
                       const firstName = (p.contacts?.nickname || p.contacts?.name || '').split(' ')[0];
                       const ph = p.contacts?.phone?.replace(/\D/g, '');
                       if (!ph) { alert('Sem telefone cadastrado.'); return; }
-                      const paymentLink = `${window.location.origin}/pagamento/${paymentModal.contactId}`;
+                      const paymentLink = `${window.location.origin}/pagamento/${paymentModal.contactId}?event=${eventId}`;
                       const fmtDays = contactAllDays.map(d =>
                         new Date(d + 'T12:00:00').toLocaleDateString('pt-BR', { day: 'numeric', month: 'long' })
                       );

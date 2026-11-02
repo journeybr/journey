@@ -1883,7 +1883,7 @@ export default function PagamentosPage() {
                       const firstName = (pmP.contacts?.nickname || pmP.contacts?.name || '').split(' ')[0];
                       const ph = pmP.contacts?.phone?.replace(/\D/g, '');
                       if (!ph) { alert('Sem telefone cadastrado.'); return; }
-                      const paymentLink = `${window.location.origin}/pagamento/${paymentModal.contactId}`;
+                      const paymentLink = `${window.location.origin}/pagamento/${paymentModal.contactId}${paymentModal.eventId ? `?event=${paymentModal.eventId}` : ''}`;
                       const today = new Date().toISOString().split('T')[0];
                       const days = [];
                       participants.filter(x => x.contact_id === paymentModal.contactId).forEach(row => {

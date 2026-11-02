@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { computeBasePriceForContact, computeExpected } from '@/lib/paymentCalc';
 
@@ -161,6 +162,8 @@ const s = {
 };
 
 export default function PagamentoPage({ params }) {
+  const searchParams = useSearchParams();
+  const eventParam = searchParams.get('event');
   const [contactId, setContactId] = useState(null);
   const [contact, setContact] = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -216,11 +219,25 @@ export default function PagamentoPage({ params }) {
     setLoading(false);
   }
 
-  const reservedDays = participants.filter(p => {
+  // Filtra para a cerimônia específica do link (+ pareada), ou só futuras quando sem ?event=
+  const today = new Date().toISOString().split('T')[0];
+  const displayParticipants = eventParam
+    ? (() => {
+        const target = participants.find(p => p.event_id === eventParam);
+        const linkedId = target?.events?.linked_event_id;
+        return participants.filter(p => p.event_id === eventParam || (linkedId && p.event_id === linkedId));
+      })()
+    : participants.filter(p => p.events?.date && p.events.date >= today);
+
+  const displayEventIds = new Set(displayParticipants.map(p => p.event_id));
+  const displayTransfersOut = transfersOut.filter(t => displayEventIds.has(t.event_id));
+  const displayTransfersIn = transfersIn.filter(t => displayEventIds.has(t.event_id));
+
+  const reservedDays = displayParticipants.filter(p => {
     const paidForThis = (p.payment_records || []).filter(r => !r.cancelled && !r.pledge).reduce((s, r) => s + (r.amount || 0), 0);
-    const outForThis = transfersOut.filter(t => t.event_id === p.event_id).reduce((s, t) => s + Number(t.amount), 0);
-    const inForThis = transfersIn.filter(t => t.event_id === p.event_id).reduce((s, t) => s + Number(t.amount), 0);
-    const expected = computeExpected(p, participants) ?? 0;
+    const outForThis = displayTransfersOut.filter(t => t.event_id === p.event_id).reduce((s, t) => s + Number(t.amount), 0);
+    const inForThis = displayTransfersIn.filter(t => t.event_id === p.event_id).reduce((s, t) => s + Number(t.amount), 0);
+    const expected = computeExpected(p, displayParticipants) ?? 0;
     const discount = p.discount || 0;
     return expected - discount - paidForThis - outForThis - inForThis > 0;
   }).flatMap(p => {
@@ -229,15 +246,17 @@ export default function PagamentoPage({ params }) {
       days.push({ date: p.events.date, event: p.events.name });
     if (p.date2_confirmed && p.events?.date2)
       days.push({ date: p.events.date2, event: p.events.name });
+    if (p.date3_confirmed && p.events?.date3)
+      days.push({ date: p.events.date3, event: p.events.name });
     return days;
   });
 
-  const basePrice = computeBasePriceForContact(participants);
+  const basePrice = computeBasePriceForContact(displayParticipants);
 
-  const sumOut = transfersOut.reduce((s, t) => s + Number(t.amount), 0);
-  const sumIn = transfersIn.reduce((s, t) => s + Number(t.amount), 0);
-  const totalDiscount = participants.reduce((s, p) => s + (p.discount || 0), 0);
-  const totalPaidSoFar = participants.reduce((sum, p) => {
+  const sumOut = displayTransfersOut.reduce((s, t) => s + Number(t.amount), 0);
+  const sumIn = displayTransfersIn.reduce((s, t) => s + Number(t.amount), 0);
+  const totalDiscount = displayParticipants.reduce((s, p) => s + (p.discount || 0), 0);
+  const totalPaidSoFar = displayParticipants.reduce((sum, p) => {
     return sum + (p.payment_records || []).filter(r => !r.cancelled && !r.pledge).reduce((s, r) => s + (r.amount || 0), 0);
   }, 0);
   const price = basePrice != null ? Math.max(0, basePrice - totalPaidSoFar - sumOut + sumIn - totalDiscount) : (sumIn > 0 ? Math.max(0, sumIn) : null);
@@ -276,7 +295,7 @@ export default function PagamentoPage({ params }) {
       : { status: 'conferir pagamento', payment_method: 'Espécie' };
 
     await Promise.all([
-      ...participants.filter(p => p.payment_status !== 'pago').map(async p => {
+      ...displayParticipants.filter(p => p.payment_status !== 'pago').map(async p => {
         const withLog = { ...statusData, ...baseExt, payment_log: [...(p.payment_log || []), logEntry] };
         const { error } = await supabase.from('event_participants').update(withLog)
           .match({ event_id: p.event_id, contact_id: p.contact_id });
