@@ -90,7 +90,10 @@ export default function CeremonyFormModal({ data, setData, onSubmit, onClose, ti
 
   useEffect(() => {
     supabase.from('preparation_texts').select('id, title, content, created_at').order('created_at', { ascending: false }).then(({ data }) => {
-      if (data) setPrepTexts(data);
+      if (data) {
+        setPrepTexts(data);
+        if (data.length > 0) setData(d => ({ ...d, preparation_id: d.preparation_id || data[0].id }));
+      }
     });
   }, []);
 
